@@ -27,9 +27,9 @@ This toolkit solves that by deploying a **single, curated BigQuery view** (`vw_a
 | Capability | Description |
 | :--- | :--- |
 | **AI-only filtering** | Isolates Vertex AI, Generative AI, Conversational AI, Document/Vision/Speech AI, and GPU/TPU compute SKUs from all other cloud spend. |
-| **Category classification** | Buckets spend into `Generative AI`, `Agentic & Conversational AI`, `AI Compute (GPU/TPU)`, and `Perception & Cognitive AI`. |
-| **Model-family parsing** | Extracts model families from SKU descriptions (Gemini 1.5 Pro / Flash, Gemini 2.0, Anthropic Claude, Imagen, Embeddings, A100 / H100 / L4 GPUs, TPUs). |
-| **Token modality** | Splits GenAI SKUs into `Input (Prompt)`, `Output (Response)`, and `Context Cache`. |
+| **Category classification** | Buckets spend into `Generative AI`, `Agentic & Conversational AI`, `AI Compute (GPU/TPU)`, `Vector Search & Embeddings Infra`, `Enterprise AI Subscriptions (Seats)`, and `Perception & Cognitive AI`. |
+| **Model-family parsing** | Extracts model families from SKU descriptions (Gemini 1.5 Pro/Flash, Gemini 2.0, Gemini 2.5/3.5, Anthropic Claude, Imagen, Embeddings, Vector Search, Gemini Code Assist, A100 / H100 / L4 GPUs, TPUs). |
+| **Token modality** | Splits GenAI SKUs into `Input (Prompt)`, `Output (Response)`, `Output (Thinking / Reasoning)`, `Context Cache`, and `Subscription / Seat`. |
 | **True net cost** | Computes `net_cost = gross_cost + credits` (credits are negative in the export) so CUDs, SUDs, and promotions are reflected. |
 | **Chargeback labels** | Surfaces `team`, `environment`, `cost_center`, and `app` labels for showback / chargeback. |
 | **Anomaly detection** | A companion view (`vw_ai_cost_anomaly_alerts`) flags any project whose daily AI spend exceeds 1.8× its 7-day rolling average. |

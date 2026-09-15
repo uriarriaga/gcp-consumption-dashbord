@@ -106,6 +106,13 @@ else
     UNION ALL SELECT 'Compute Engine', '6F81-5844-456A', 'NVIDIA H100 80GB GPU running in Americas', 'hour', 680.0, 'AI Compute (GPU/TPU)'
     UNION ALL SELECT 'Compute Engine', '6F81-5844-456A', 'NVIDIA L4 GPU running in Americas', 'hour', 150.0, 'AI Compute (GPU/TPU)'
     UNION ALL SELECT 'Compute Engine', '6F81-5844-456A', 'Cloud TPU v5e Pod Slice Running in us-central1', 'hour', 290.0, 'AI Compute (GPU/TPU)'
+    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Vector Search Index Serving e2-standard-16', 'hour', 380.0, 'Vector Search & Embeddings Infra'
+    UNION ALL SELECT 'Duet AI', 'E567-8901-2345', 'Duet AI: Gemini Code Assist Subscription', 'month', 240.0, 'Enterprise AI Subscriptions (Seats)'
+    UNION ALL SELECT 'Vertex AI Search', 'F678-9012-3456', 'Vertex AI Search: Gemini Enterprise Standard 1-Yr Subscription', 'month', 190.0, 'Enterprise AI Subscriptions (Seats)'
+    UNION ALL SELECT 'Gemini API', 'G789-0123-4567', 'Gemini 2.5 Flash - Thinking Text Output Tokens', 'token', 170.0, 'Generative AI'
+    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Gemini 2.5 Pro - Thinking Text Output Tokens', 'token', 230.0, 'Generative AI'
+    UNION ALL SELECT 'Gemini API', 'G789-0123-4567', 'Gemini 3.5 Flash - Input Prompt Tokens', 'token', 120.0, 'Generative AI'
+    UNION ALL SELECT 'Gemini API', 'G789-0123-4567', 'Gemini 3.5 Flash - Output Candidate Tokens', 'token', 260.0, 'Generative AI'
   )
   SELECT
     '01ABCD-23EF45-678901' AS billing_account_id,
@@ -205,7 +212,10 @@ WITH raw_billing AS (
         'Document AI',
         'Dialogflow Enterprise Edition',
         'Dialogflow CX',
-        'Discovery Engine'
+        'Discovery Engine',
+        'Duet AI',
+        'Vertex AI Search',
+        'Gemini API'
       )
       OR (
         service.description = 'Compute Engine'
@@ -216,16 +226,24 @@ WITH raw_billing AS (
 SELECT
   *,
   CASE
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Vector Search|Matching Engine') THEN 'Vector Search & Embeddings Infra'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Subscription|Code Assist|Gemini Enterprise|Notebook Enterprise') THEN 'Enterprise AI Subscriptions (Seats)'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini|Claude|PaLM|Imagen|Codey|Embeddings|Text Generation|Multimodal|Provisioned Throughput') THEN 'Generative AI'
-    WHEN service_name IN ('Dialogflow Enterprise Edition', 'Dialogflow CX', 'Discovery Engine') THEN 'Agentic & Conversational AI'
+    WHEN service_name IN ('Dialogflow Enterprise Edition', 'Dialogflow CX', 'Discovery Engine', 'Vertex AI Search') THEN 'Agentic & Conversational AI'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Nvidia|A100|H100|V100|L4|T4|P100|TPU') THEN 'AI Compute (GPU/TPU)'
     ELSE 'Perception & Cognitive AI'
   END AS ai_category,
 
   CASE
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Vector Search|Matching Engine') THEN 'Vector Search'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Code Assist') THEN 'Gemini Code Assist'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*Enterprise|Vertex AI Search') THEN 'Vertex AI Search / Enterprise'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*1\.5.*Pro') THEN 'Gemini 1.5 Pro'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*1\.5.*Flash') THEN 'Gemini 1.5 Flash'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*2\.0') THEN 'Gemini 2.0'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*2\.5.*Pro') THEN 'Gemini 2.5 Pro'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*2\.5.*Flash') THEN 'Gemini 2.5 Flash'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*3\.5') THEN 'Gemini 3.5 Flash/Pro'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Claude') THEN 'Anthropic Claude'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Imagen') THEN 'Imagen'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Embedding') THEN 'Embeddings'
@@ -238,9 +256,11 @@ SELECT
   END AS model_or_resource_family,
 
   CASE
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Thinking') THEN 'Output (Thinking / Reasoning)'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Input|Prompt') THEN 'Input (Prompt)'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Output|Candidate') THEN 'Output (Response)'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Context Caching') THEN 'Context Cache'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Subscription|Seat|Month') THEN 'Subscription / Seat'
     ELSE 'API Request / Hourly'
   END AS modality_type
 FROM raw_billing;

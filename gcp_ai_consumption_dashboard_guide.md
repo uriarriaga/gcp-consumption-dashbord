@@ -112,7 +112,10 @@ WITH raw_billing AS (
         'Document AI',
         'Dialogflow Enterprise Edition',
         'Dialogflow CX',
-        'Discovery Engine'
+        'Discovery Engine',
+        'Duet AI',
+        'Vertex AI Search',
+        'Gemini API'
       )
       OR (
         service.description = 'Compute Engine'
@@ -124,17 +127,25 @@ SELECT
   *,
   -- Classification into AI Tier
   CASE
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Vector Search|Matching Engine') THEN 'Vector Search & Embeddings Infra'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Subscription|Code Assist|Gemini Enterprise|Notebook Enterprise') THEN 'Enterprise AI Subscriptions (Seats)'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini|Claude|PaLM|Imagen|Codey|Embeddings|Text Generation|Multimodal|Provisioned Throughput') THEN 'Generative AI'
-    WHEN service_name IN ('Dialogflow Enterprise Edition', 'Dialogflow CX', 'Discovery Engine') THEN 'Agentic & Conversational AI'
+    WHEN service_name IN ('Dialogflow Enterprise Edition', 'Dialogflow CX', 'Discovery Engine', 'Vertex AI Search') THEN 'Agentic & Conversational AI'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Nvidia|A100|H100|V100|L4|T4|P100|TPU') THEN 'AI Compute (GPU/TPU)'
     ELSE 'Perception & Cognitive AI'
   END AS ai_category,
 
   -- Model & Architecture Breakdown
   CASE
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Vector Search|Matching Engine') THEN 'Vector Search'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Code Assist') THEN 'Gemini Code Assist'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*Enterprise|Vertex AI Search') THEN 'Vertex AI Search / Enterprise'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*1\.5.*Pro') THEN 'Gemini 1.5 Pro'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*1\.5.*Flash') THEN 'Gemini 1.5 Flash'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*2\.0') THEN 'Gemini 2.0'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*2\.5.*Pro') THEN 'Gemini 2.5 Pro'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*2\.5.*Flash') THEN 'Gemini 2.5 Flash'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*3\.5') THEN 'Gemini 3.5 Flash/Pro'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Claude') THEN 'Anthropic Claude'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Imagen') THEN 'Imagen'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Embedding') THEN 'Embeddings'
@@ -148,9 +159,11 @@ SELECT
 
   -- Token / Request Modality
   CASE
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Thinking') THEN 'Output (Thinking / Reasoning)'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Input|Prompt') THEN 'Input (Prompt)'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Output|Candidate') THEN 'Output (Response)'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Context Caching') THEN 'Context Cache'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Subscription|Seat|Month') THEN 'Subscription / Seat'
     ELSE 'API Request / Hourly'
   END AS modality_type
 FROM raw_billing;
@@ -187,9 +200,11 @@ Add the following controls across the top of every dashboard page:
 | **Scorecard** | Total AI Net Spend | — | `SUM(net_cost)` | Compare to Previous Period (%) |
 | **Scorecard** | Total Gross Spend | — | `SUM(gross_cost)` | Currency format |
 | **Scorecard** | Total Discounts/Credits | — | `SUM(total_credits)` | Negative value (savings) |
-| **Scorecard** | GenAI Share % | — | Calculated Field: `SUM(CASE WHEN ai_category = 'Generative AI' THEN net_cost ELSE 0 END) / SUM(net_cost)` | Percentage format |
+| **Scorecard** | Effective Discount % | — | Calculated Field: `SAFE_DIVIDE(ABS(SUM(total_credits)), SUM(gross_cost))` | Percentage format |
+| **Scorecard** | GenAI Share % | — | Calculated Field: `SAFE_DIVIDE(SUM(CASE WHEN ai_category = 'Generative AI' THEN net_cost ELSE 0 END), SUM(net_cost))` | Percentage format |
 | **Time Series (Stacked Area)** | Daily Spend by Category | `usage_date`, Breakdown: `ai_category` | `SUM(net_cost)` | Smooth lines, show data points |
 | **Donut Chart** | Spend by AI Category | `ai_category` | `SUM(net_cost)` | Data labels as value & percentage |
+| **Table** | Top 10 SKU Spend Concentration | `sku_description`, `service_name`, `usage_unit` | 1. `SUM(usage_amount)`<br>2. `SUM(net_cost)`<br>3. `% of Total net_cost` | Sort descending by `net_cost`, limit to **Top 10 rows** |
 
 ---
 

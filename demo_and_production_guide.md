@@ -116,7 +116,9 @@ chmod +x deploy_ai_dashboard.sh
 ### 4.3 What Gets Created
 1. **Dataset**: `ai_billing_dashboard` (if not already existing).
 2. **Table `sample_ai_billing_export`**: 60 days of synthetic billing items with realistic pricing, discounts, and units:
-   - **Generative AI**: Gemini 1.5 Pro/Flash, Gemini 2.0 Flash, Claude 3.5 Sonnet, Imagen 3, Multimodal Embeddings.
+   - **Generative AI & Reasoning Tokens**: Gemini 1.5 Pro/Flash, Gemini 2.0 Flash, Gemini 2.5 Pro/Flash (with Thinking/Reasoning output tokens), Gemini 3.5 Flash, Claude 3.5 Sonnet, Imagen 3, Multimodal Embeddings.
+   - **Vector Search & Infrastructure**: Vector Search index serving (e2-standard-16).
+   - **Enterprise AI Subscriptions**: Duet AI: Gemini Code Assist seat licenses, Vertex AI Search: Gemini Enterprise Standard 1-Yr subscriptions.
    - **AI Compute**: NVIDIA A100 80GB, H100, L4 GPUs, and Cloud TPU v5e pod slices.
    - **Agentic & Perception AI**: Document AI, Dialogflow CX, Discovery Engine / Vertex Search.
    - **Labels**: Realistic `environment` (`prod`, `staging`, `dev`), `team`, `cost_center`, and `app`.
@@ -268,7 +270,10 @@ WITH raw_billing AS (
         'Document AI',
         'Dialogflow Enterprise Edition',
         'Dialogflow CX',
-        'Discovery Engine'
+        'Discovery Engine',
+        'Duet AI',
+        'Vertex AI Search',
+        'Gemini API'
       )
       OR (
         service.description = 'Compute Engine'
@@ -279,16 +284,24 @@ WITH raw_billing AS (
 SELECT
   *,
   CASE
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Vector Search|Matching Engine') THEN 'Vector Search & Embeddings Infra'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Subscription|Code Assist|Gemini Enterprise|Notebook Enterprise') THEN 'Enterprise AI Subscriptions (Seats)'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini|Claude|PaLM|Imagen|Codey|Embeddings|Text Generation|Multimodal|Provisioned Throughput') THEN 'Generative AI'
-    WHEN service_name IN ('Dialogflow Enterprise Edition', 'Dialogflow CX', 'Discovery Engine') THEN 'Agentic & Conversational AI'
+    WHEN service_name IN ('Dialogflow Enterprise Edition', 'Dialogflow CX', 'Discovery Engine', 'Vertex AI Search') THEN 'Agentic & Conversational AI'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Nvidia|A100|H100|V100|L4|T4|P100|TPU') THEN 'AI Compute (GPU/TPU)'
     ELSE 'Perception & Cognitive AI'
   END AS ai_category,
 
   CASE
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Vector Search|Matching Engine') THEN 'Vector Search'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Code Assist') THEN 'Gemini Code Assist'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*Enterprise|Vertex AI Search') THEN 'Vertex AI Search / Enterprise'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*1\.5.*Pro') THEN 'Gemini 1.5 Pro'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*1\.5.*Flash') THEN 'Gemini 1.5 Flash'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*2\.0') THEN 'Gemini 2.0'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*2\.5.*Pro') THEN 'Gemini 2.5 Pro'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*2\.5.*Flash') THEN 'Gemini 2.5 Flash'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*3\.5') THEN 'Gemini 3.5 Flash/Pro'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Claude') THEN 'Anthropic Claude'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Imagen') THEN 'Imagen'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Embedding') THEN 'Embeddings'
@@ -301,9 +314,11 @@ SELECT
   END AS model_or_resource_family,
 
   CASE
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Thinking') THEN 'Output (Thinking / Reasoning)'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Input|Prompt') THEN 'Input (Prompt)'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Output|Candidate') THEN 'Output (Response)'
     WHEN REGEXP_CONTAINS(sku_description, r'(?i)Context Caching') THEN 'Context Cache'
+    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Subscription|Seat|Month') THEN 'Subscription / Seat'
     ELSE 'API Request / Hourly'
   END AS modality_type
 FROM raw_billing;
@@ -354,9 +369,9 @@ bq rm -f -t <PROJECT_ID>:ai_billing_dashboard.sample_ai_billing_export
 | `net_cost` | FLOAT64 | `GREATEST(0, gross_cost + total_credits)`. |
 | `currency` | STRING | Billing currency. |
 | `label_env` / `label_team` / `label_cost_center` / `label_app` | STRING | Extracted organizational metadata from labels array. |
-| `ai_category` | STRING | Classified bucket: `Generative AI`, `Agentic & Conversational AI`, `AI Compute (GPU/TPU)`, `Perception & Cognitive AI`. |
-| `model_or_resource_family` | STRING | Specific model/hardware: `Gemini 1.5 Pro`, `Gemini 1.5 Flash`, `Gemini 2.0`, `Anthropic Claude`, `Imagen`, `Embeddings`, `NVIDIA A100 GPU`, `Google Cloud TPU`, etc. |
-| `modality_type` | STRING | `Input (Prompt)`, `Output (Response)`, `Context Cache`, or `API Request / Hourly`. |
+| `ai_category` | STRING | Classified bucket: `Generative AI`, `Agentic & Conversational AI`, `AI Compute (GPU/TPU)`, `Vector Search & Embeddings Infra`, `Enterprise AI Subscriptions (Seats)`, `Perception & Cognitive AI`. |
+| `model_or_resource_family` | STRING | Specific model/service: `Vector Search`, `Gemini Code Assist`, `Vertex AI Search / Enterprise`, `Gemini 1.5 Pro/Flash`, `Gemini 2.0`, `Gemini 2.5 Pro/Flash`, `Gemini 3.5 Flash/Pro`, `Anthropic Claude`, `Imagen`, `Embeddings`, `NVIDIA A100 GPU`, `Google Cloud TPU`, etc. |
+| `modality_type` | STRING | `Input (Prompt)`, `Output (Response)`, `Output (Thinking / Reasoning)`, `Context Cache`, `Subscription / Seat`, or `API Request / Hourly`. |
 
 ---
 
@@ -370,10 +385,11 @@ bq rm -f -t <PROJECT_ID>:ai_billing_dashboard.sample_ai_billing_export
 | `net_cost`, `gross_cost`, `total_credits` | Currency (USD) | Sum |
 | `usage_amount` | Number | Sum |
 
-Add two calculated fields in Looker Studio:
+Add the following calculated fields in Looker Studio:
 
 ```
-GenAI Spend % = SUM(CASE WHEN ai_category = 'Generative AI' THEN net_cost ELSE 0 END) / SUM(net_cost)
+Effective Discount %    = SAFE_DIVIDE(ABS(SUM(total_credits)), SUM(gross_cost))
+GenAI Spend %           = SAFE_DIVIDE(SUM(CASE WHEN ai_category = 'Generative AI' THEN net_cost ELSE 0 END), SUM(net_cost))
 Estimated Million Tokens = CASE WHEN usage_unit = 'token' THEN usage_amount / 1000000 ELSE usage_amount END
 ```
 
@@ -381,10 +397,10 @@ Estimated Million Tokens = CASE WHEN usage_unit = 'token' THEN usage_amount / 10
 
 | Page | Suggested Components |
 | :--- | :--- |
-| **Page 1: Executive Overview** | Date-range control · dropdowns for `ai_category`, `project_name`, `label_env` · scorecards (Net Spend w/ previous-period comparison, Gross, Credits, GenAI %) · stacked time-series by `ai_category` · donut by `ai_category` |
-| **Page 2: GenAI Deep-Dive** | Filter `ai_category = 'Generative AI'` · horizontal bar by `model_or_resource_family` · pivot table `model_or_resource_family` × `modality_type` with tokens and net cost |
+| **Page 1: Executive Overview** | **Global Controls**: Date-range control · dropdowns for `ai_category`, `project_name`, `label_env`<br>**Scorecards**: Net Spend w/ previous-period comparison, Gross List Cost, Realized Credits/Savings, **Effective Discount %** (`ABS(credits)/gross`), GenAI Share %<br>**Trends & Breakdown**: Stacked time-series by `ai_category` · Donut chart by `ai_category`<br>**Top 10 Concentration Table**: Dimensions: `sku_description`, `service_name`, `usage_unit` \| Metrics: `SUM(usage_amount)`, `SUM(net_cost)`, `% of Total net_cost` \| Sort descending by `net_cost`, limit to **Top 10** rows |
+| **Page 2: GenAI & Reasoning Deep-Dive** | Filter `ai_category = 'Generative AI'` · horizontal bar by `model_or_resource_family` · pivot table `model_or_resource_family` × `modality_type` (isolating Prompt, Standard Response, Thinking/Reasoning tokens, and Context Cache) with tokens and net cost |
 | **Page 3: Attribution** | Treemap `label_team` → `project_name` · table by `label_cost_center`, `label_env` with % of total spend |
-| **Page 4: AI Infrastructure** | Filter `ai_category = 'AI Compute (GPU/TPU)'` · scorecard accelerator hours · donut by accelerator type · table by `project_name`, `region`, `sku_description` |
+| **Page 4: AI Infrastructure & Vector Search** | Filter `ai_category IN ('AI Compute (GPU/TPU)', 'Vector Search & Embeddings Infra')` · scorecard accelerator hours · donut by accelerator type · table by `project_name`, `region`, `sku_description` |
 
 ### 7.3 Scheduled Anomaly Alerting (Optional)
 
