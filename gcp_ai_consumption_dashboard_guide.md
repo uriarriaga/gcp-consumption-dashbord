@@ -8,14 +8,14 @@ This guide provides an end-to-end walkthrough for deploying a production-ready *
 
 ```mermaid
 flowchart LR
-    A[Google Cloud Billing Export] -->|Continuous Export| B[BigQuery Raw Billing Dataset]
-    B -->|SQL Logic & Classification| C[vw_ai_consumption_master View]
-    C -->|Direct Connector / BI Engine| D[Looker Studio Dashboard]
-    D --> E[Page 1: Executive KPI & Trend]
-    D --> F[Page 2: GenAI & Token Breakdown]
-    D --> G[Page 3: Project & Team Attribution]
-    D --> H[Page 4: GPU / TPU Infrastructure]
-    C -->|Scheduled Alert Query| I[Automated Anomaly Email / Slack]
+    A["Google Cloud Billing Export"] -->|"Continuous Export"| B["BigQuery Raw Billing Dataset"]
+    B -->|"SQL Logic & Classification"| C["vw_ai_consumption_master View"]
+    C -->|"Direct Connector / BI Engine"| D["Looker Studio Dashboard"]
+    D --> E["Page 1: Executive KPI & Trend"]
+    D --> F["Page 2: GenAI & Token Breakdown"]
+    D --> G["Page 3: Project & Team Attribution"]
+    D --> H["Page 4: GPU / TPU Infrastructure"]
+    C -->|"Scheduled Alert Query"| I["Automated Anomaly Email / Slack"]
 ```
 
 ---

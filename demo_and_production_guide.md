@@ -12,15 +12,15 @@ Looker Studio connects to a curated BigQuery view: **`vw_ai_consumption_master`*
 
 ```mermaid
 flowchart TD
-    subgraph Phase 1: Demo Mode
-        A[sample_ai_billing_export<br/>Synthetic 60-day AI data] --> V[vw_ai_consumption_master<br/>SQL View]
+    subgraph DemoMode["Phase 1: Demo Mode"]
+        A["sample_ai_billing_export<br/>Synthetic 60-day AI data"] --> V["vw_ai_consumption_master<br/>SQL View"]
     end
 
-    subgraph Phase 2: Production Mode
-        B[gcp_billing_export_v1_XXXX<br/>Live GCP Billing Table] -.->|Update view definition| V
+    subgraph ProdMode["Phase 2: Production Mode"]
+        B["gcp_billing_export_v1_XXXX<br/>Live GCP Billing Table"] -.->|"Update view definition"| V
     end
 
-    V --> L[Looker Studio Dashboard<br/>Templates & Charts]
+    V --> L["Looker Studio Dashboard<br/>Templates & Charts"]
 ```
 
 Because Looker Studio reads from the **view**, your dashboard charts, fields, metrics, and URLs remain completely intact when you transition from dummy data to production. You only update the underlying view definition in BigQuery.

@@ -60,10 +60,10 @@ The result is a Looker Studio-ready data source that requires **no custom SQL in
 
 ```mermaid
 flowchart LR
-    A["Cloud Billing Export<br/>(gcp_billing_export_v1_XXXX)"] -->|Already exists| B["BigQuery View<br/>vw_ai_consumption_master"]
+    A["Cloud Billing Export<br/>gcp_billing_export_v1_XXXX"] -->|"Already exists"| B["BigQuery View<br/>vw_ai_consumption_master"]
     B --> C["BigQuery View<br/>vw_ai_cost_anomaly_alerts"]
-    B -->|Looker Studio Linking API<br/>(Copies Template c7991054-...)| D["Looker Studio Dashboard"]
-    C -->|Scheduled query / alert| E["Email / Chat notification"]
+    B -->|"Looker Studio Linking API<br/>Template c7991054"| D["Looker Studio Dashboard"]
+    C -->|"Scheduled query / alert"| E["Email / Chat notification"]
 ```
 
 > [!NOTE]
