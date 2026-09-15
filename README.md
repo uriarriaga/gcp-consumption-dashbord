@@ -49,6 +49,7 @@ The result is a Looker Studio-ready data source that requires **no custom SQL in
 | File | Purpose |
 | :--- | :--- |
 | `deploy_ai_dashboard.sh` | Interactive Bash deployment script. Creates the dataset, (optionally) sample data, and both BigQuery views. |
+| `demo_and_production_guide.md` | Guide for setting up dummy data and switching data source to production billing export. |
 | `gcp_ai_consumption_dashboard_guide.md` | Client-facing step-by-step guide including chart-by-chart Looker Studio configuration. |
 | `create_looker_studio_dashboard.py` | Generates a one-click Looker Studio **Linking API** URL that copies the public template (`c7991054-d499-4aa0-9b2a-e8f98d92ea55`) and re-binds it to your BigQuery view. |
 | `README.md` | This file. |
@@ -92,6 +93,9 @@ The script offers two modes:
 | :--- | :--- | :--- |
 | **1 – Production** | You have an existing billing export table. | You are prompted for the fully-qualified table path. **No data is generated or copied.** |
 | **2 – Demo** | Sandbox / Argolis project with no billing export. | Creates `sample_ai_billing_export` with 60 days of synthetic, schema-compatible data. |
+
+> [!TIP]
+> Starting in Demo mode? See [demo_and_production_guide.md](demo_and_production_guide.md) for a complete guide on launching with dummy data and switching to production billing export later without having to rebuild the dashboard.
 
 ### Step 3 — Deploy `vw_ai_consumption_master`
 Executes a `CREATE OR REPLACE VIEW` statement that:
