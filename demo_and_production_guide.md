@@ -46,37 +46,35 @@ flowchart TD
 
 `deploy_ai_dashboard.sh` is an interactive Bash script that wraps the `gcloud` and `bq` CLIs. It executes the following stages:
 
-### Step 0 — Pre-flight checks
+### Step 0 — Pre-flight checks & Configuration Loading
 - Verifies `gcloud` and `bq` are installed and on `PATH`.
-- Reads the current `gcloud` project and prompts you to confirm or override it.
+- Reads existing settings from `.dashboard_config` if a previous deployment was run.
+- Prompts for your **Google Cloud Project ID** (defaulting to active `gcloud` config or saved configuration).
 
 ### Step 1 — Dataset provisioning
 - Prompts for a **target dataset ID** (default: `ai_billing_dashboard`) and **location** (default: `US`).
+- Accepts bare dataset IDs (`billing_cost`) or fully-qualified IDs (`project.dataset`).
 - Runs `bq mk --dataset` only if the dataset does not already exist (idempotent).
 
 > [!IMPORTANT]
 > The target dataset **must be in the same location** as your billing export dataset (typically `US` or `EU`). BigQuery views cannot reference tables across locations.
 
-### Step 2 — Data source selection
-The script offers two modes:
+### Step 2 — Data source selection & Auto-Discovery
+The script offers two modes (Production mode is default):
 
 | Mode | When to use | What happens |
 | :--- | :--- | :--- |
-| **1 – Production** | You have an existing billing export table. | You are prompted for the fully-qualified table path. **No data is generated or copied.** |
-| **2 – Demo** | Sandbox / Argolis project with no billing export. | Creates `sample_ai_billing_export` with 60 days of synthetic, schema-compatible data. |
+| **1 – Production (Default)** | You have an existing billing export table. | Automatically scans the dataset for `gcp_billing_export_*` tables, prioritizes detailed resource exports (`gcp_billing_export_resource_v1_*`), and presents a 1-click numbered menu. Inspects existing views to prevent accidental overwrites. |
+| **2 – Demo** | Sandbox or test project with no billing export. | Creates `sample_ai_billing_export` with 60 days of synthetic, schema-compatible data. |
 
-### Step 3 — Deploy `vw_ai_consumption_master`
-Executes a `CREATE OR REPLACE VIEW` statement that:
-1. Filters the source table to AI services and GPU/TPU compute SKUs.
-2. Flattens the `credits` array into `total_credits` and computes `net_cost`.
-3. Unnests the `labels` array into `label_env`, `label_team`, `label_cost_center`, `label_app`.
-4. Adds derived classification columns: `ai_category`, `model_or_resource_family`, and `modality_type` via `REGEXP_CONTAINS` on `sku.description`.
+### Step 3 & 4 — Pre-Flight Review and View Deployment
+- Displays a full **Configuration Summary** (Target Project, Target Dataset, Location, Mode, Source Table, Target Views) and prompts for confirmation before making any changes.
+- Saves active parameters to `.dashboard_config` for synchronized reuse.
+- Deploys **`vw_ai_consumption_master`** (filters AI SKUs, unnests labels, normalizes credits, and classifies categories/models/modalities).
+- Deploys **`vw_ai_cost_anomaly_alerts`** (rolling 7-day average spend anomaly detector).
 
-### Step 4 — Deploy `vw_ai_cost_anomaly_alerts`
-Creates a companion view that aggregates daily net cost per project / category, computes a trailing 7-day rolling average with a window function, and returns only rows where today's spend is `> $50` **and** `> 1.8×` the baseline.
-
-### Step 5 — Summary
-Prints the fully-qualified names of the deployed views and connection instructions.
+### Step 5 — Automated Looker Studio Cloner Launch
+Automatically invokes `create_looker_studio_dashboard.py` with your deployed project and dataset, printing the customized 1-click template clone link directly into the terminal.
 
 ---
 
@@ -108,10 +106,10 @@ chmod +x deploy_ai_dashboard.sh
 
 | Prompt | Input | Description |
 | :--- | :--- | :--- |
-| `Enter your Argolis Project ID` | Press **Enter** | Uses your active `gcloud` project ID. |
-| `Enter BigQuery Dataset ID` | Press **Enter** | Uses default: `ai_billing_dashboard`. |
+| `Enter your Google Cloud Project ID` | Press **Enter** | Uses your active `gcloud` project ID. |
+| `Enter BigQuery Dataset ID` | Press **Enter** | Uses default: `ai_billing_dashboard` (or enter `project.dataset`). |
 | `Enter BigQuery Dataset Location` | Press **Enter** | Uses default: `US` (or type your region, e.g. `EU`). |
-| `Select option [1 or 2]` | **`2`** | Selects **Demo mode**. |
+| `Select option [1 or 2]` | **`2`** | Selects **Demo mode** (Option 1 is default for Production). |
 
 ### 4.3 What Gets Created
 1. **Dataset**: `ai_billing_dashboard` (if not already existing).
@@ -144,15 +142,26 @@ ORDER BY net_usd DESC;"
 
 ### 4.5 Launch the Looker Studio Dashboard
 
-Run the included Python cloner:
+### 4.5 Launch the Looker Studio Dashboard
+
+`deploy_ai_dashboard.sh` automatically launches the Python cloner upon completion. If you want to re-generate the URL manually at any time, simply run:
 
 ```bash
-python3 create_looker_studio_dashboard.py <PROJECT_ID> ai_billing_dashboard vw_ai_consumption_master
+# Automatically reads .dashboard_config generated during deployment:
+python3 create_looker_studio_dashboard.py
+
+# Or pass custom arguments:
+python3 create_looker_studio_dashboard.py --project <PROJECT_ID> --dataset ai_billing_dashboard
 ```
 
 1. Open the generated URL in your browser.
-2. Looker Studio clones template `c7991054-d499-4aa0-9b2a-e8f98d92ea55` and maps it to your BigQuery view.
+2. Looker Studio clones template `c7991054-d499-4aa0-9b2a-e8f98d92ea55` and binds it directly to your BigQuery view.
 3. Click **Save and share** to preserve your copy.
+
+> [!TIP]
+> **Operational Best Practices:**
+> - **Credentials Setting:** In Looker Studio (Resource → Manage added data sources → Edit → Data credentials), configure the data source to use **Viewer's Credentials** so access respects BigQuery IAM permissions.
+> - **Sharing:** The URL generated by the script opens the report in edit/create mode. Use the **Share** button in Looker Studio to provide view-only links to stakeholders.
 
 ---
 
@@ -176,7 +185,7 @@ Identify the fully-qualified table path:
 ```
 <BILLING_PROJECT_ID>.<BILLING_DATASET_ID>.gcp_billing_export_v1_XXXXXX_XXXXXX_XXXXXX
 ```
-*(Or `gcp_billing_export_resource_v1_XXXXXX_XXXXXX_XXXXXX` if using Detailed Export).*
+*(Or `gcp_billing_export_resource_v1_XXXXXX_XXXXXX_XXXXXX` if using Detailed Export — recommended).*
 
 Confirm the dataset location:
 ```bash
@@ -215,15 +224,19 @@ Re-run `deploy_ai_dashboard.sh`:
 ./deploy_ai_dashboard.sh
 ```
 
-| Prompt | Value |
+| Prompt | Value / Behavior |
 | :--- | :--- |
-| `Enter your Argolis Project ID` | Target project where views will live. |
-| `Enter BigQuery Dataset ID` | `ai_billing_dashboard` (or your existing billing dataset). |
+| `Enter your Google Cloud Project ID` | Target project where views will live (press **Enter** for active/saved default). |
+| `Enter BigQuery Dataset ID` | `ai_billing_dashboard` (or enter `project.dataset`). |
 | `Enter BigQuery Dataset Location` | **Must match** billing export dataset location (e.g. `US`). |
-| `Select option [1 or 2]` | **`1`** (Production mode) |
-| `Enter full path to Billing Export table` | Full table path from §5.1. |
+| `Select option [1 or 2]` | **`1`** (Production mode — default) |
+| `Detected Billing Export tables` | The script automatically finds all `gcp_billing_export_*` tables in the dataset, prioritizes detailed resource exports, and presents a numbered list. Press **`1`** to select the top recommended table. |
+| `Pre-Deployment Summary` | Displays resolved project, dataset, source table, and views to verify before applying changes. |
 
-The script executes `CREATE OR REPLACE VIEW` on `vw_ai_consumption_master` and `vw_ai_cost_anomaly_alerts`.
+> [!NOTE]
+> **Re-Run & Regression Protection:** If `vw_ai_consumption_master` already exists, `deploy_ai_dashboard.sh` reads the current `FROM` source table from the view and offers to keep it by default. Re-running the script will **never** silently overwrite your production table.
+
+The script executes `CREATE OR REPLACE VIEW` on `vw_ai_consumption_master` and `vw_ai_cost_anomaly_alerts` and re-generates your Looker Studio link.
 
 ### 5.4 Method B: Manual In-Place SQL Update
 
@@ -408,22 +421,79 @@ Create a BigQuery **scheduled query** that runs daily against `vw_ai_cost_anomal
 
 ---
 
-## 8. Access Management & Permissions
+## 8. Access Management, Security & Permissions
 
-### Granting Dashboard Viewers Access
+### 8.1 Data Source Credentials: Viewer's vs. Owner's Credentials
 
-- **Owner's Credentials (Default in Looker Studio)**: Viewers only need access to the Looker Studio report URL. BigQuery queries execute under the dashboard creator's credentials.
-- **Viewer's Credentials**: Grant viewers permissions on the analytics project:
-  ```bash
-  gcloud projects add-iam-policy-binding <PROJECT_ID> \
-    --member="user:<viewer>@example.com" --role="roles/bigquery.jobUser"
+When connecting Looker Studio to BigQuery, you can configure the data source credentials under:
+**Resource** → **Manage added data sources** → **Edit** → **Data credentials**.
 
-  bq add-iam-policy-binding --member="user:<viewer>@example.com" \
-    --role="roles/bigquery.dataViewer" <PROJECT_ID>:ai_billing_dashboard
-  ```
+> [!WARNING]
+> **Owner's Credentials (Security Exposure Risk):** Under Owner's credentials, BigQuery queries execute using the dashboard creator's Google Cloud identity. Anyone who has view access to the Looker Studio report can see all aggregated billing numbers, even if they have **no Google Cloud IAM access** whatsoever.
 
-> [!NOTE]
-> To avoid granting viewers read access to the raw enterprise billing export dataset, configure `vw_ai_consumption_master` as an [Authorized View](https://cloud.google.com/bigquery/docs/authorized-views) on the billing export dataset.
+> [!IMPORTANT]
+> **Viewer's Credentials (Enterprise Best Practice):** Under Viewer's credentials, Looker Studio runs BigQuery queries using each individual user's Google Cloud credentials. This guarantees that users without appropriate IAM permissions cannot see confidential financial data.
+
+To grant viewers access under **Viewer's Credentials**:
+1. Grant the viewer BigQuery query execution rights in the analytics project:
+   ```bash
+   gcloud projects add-iam-policy-binding <TARGET_PROJECT_ID> \
+     --member="user:viewer@example.com" \
+     --role="roles/bigquery.jobUser"
+   ```
+2. Grant read access to the analytics dataset:
+   ```bash
+   bq add-iam-policy-binding \
+     --member="user:viewer@example.com" \
+     --role="roles/bigquery.dataViewer" \
+     <TARGET_PROJECT_ID>:ai_billing_dashboard
+   ```
+3. To avoid granting viewers read access to the underlying raw enterprise billing export dataset, configure `vw_ai_consumption_master` as an **[Authorized View](https://cloud.google.com/bigquery/docs/authorized-views)** on the billing export dataset. Viewers will then query the curated AI view without direct access to overall company billing data.
+
+---
+
+### 8.2 Automated Deployment via Service Account
+
+For production CI/CD pipelines or enterprise deployments where personal user accounts should not be used:
+
+```bash
+# 1. Create a dedicated deployment service account
+gcloud iam service-accounts create ai-dashboard-deployer \
+  --description="Service account for automated AI billing dashboard deployment" \
+  --display-name="AI Dashboard Deployer"
+
+# 2. Grant roles on the target analytics project
+gcloud projects add-iam-policy-binding <TARGET_PROJECT_ID> \
+  --member="serviceAccount:ai-dashboard-deployer@<TARGET_PROJECT_ID>.iam.gserviceaccount.com" \
+  --role="roles/bigquery.dataEditor"
+
+gcloud projects add-iam-policy-binding <TARGET_PROJECT_ID> \
+  --member="serviceAccount:ai-dashboard-deployer@<TARGET_PROJECT_ID>.iam.gserviceaccount.com" \
+  --role="roles/bigquery.jobUser"
+
+# 3. Grant read access on the billing export dataset
+bq add-iam-policy-binding \
+  --member="serviceAccount:ai-dashboard-deployer@<TARGET_PROJECT_ID>.iam.gserviceaccount.com" \
+  --role="roles/bigquery.dataViewer" \
+  <BILLING_PROJECT_ID>:<BILLING_DATASET_ID>
+
+# 4. Activate the service account in your CI/CD runner
+gcloud auth activate-service-account --key-file=/path/to/sa-key.json
+
+# 5. Execute deployment unattended
+./deploy_ai_dashboard.sh
+```
+
+---
+
+### 8.3 Sharing the Report with Stakeholders
+
+- **Initial Linking API Link:** The URL generated by `create_looker_studio_dashboard.py` is the **template copy / edit link**. Opening it creates an unsaved draft copy bound to your BigQuery view.
+- **Distributing to Team / Executives:**
+  1. Once the dashboard opens, click **Save and share** (top right) to save the cloned report in your Looker Studio account.
+  2. Click the **Share** button in the top navigation bar.
+  3. Enter email addresses or Google Groups for your stakeholders and select **Viewer**.
+  4. Copy and distribute the **Share link** (not the original creation URL).
 
 ---
 

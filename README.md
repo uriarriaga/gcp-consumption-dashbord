@@ -8,8 +8,9 @@ A turnkey toolkit that transforms your **Google Cloud Billing Export (BigQuery)*
 
 1. [Objective](#1-objective)
 2. [High-Level Architecture](#2-high-level-architecture)
-3. [Implementation & Guides](#3-implementation--guides)
-4. [Frequently Asked Questions (FAQ)](#4-frequently-asked-questions-faq)
+3. [Quick Start](#3-quick-start)
+4. [Implementation & Detailed Guides](#4-implementation--detailed-guides)
+5. [Frequently Asked Questions (FAQ)](#5-frequently-asked-questions-faq)
 
 ---
 
@@ -53,15 +54,48 @@ flowchart LR
 
 ---
 
-## 3. Implementation & Guides
+## 3. Quick Start
 
-All implementation steps, deployment options, schema documentation, and troubleshooting guides have been consolidated into dedicated documents:
+Clone the repository and run the automated deployment script in Google Cloud Shell or any terminal with `gcloud` and `bq` installed:
+
+```bash
+git clone https://github.com/uriarriaga/gcp-consumption-dashbord.git
+cd gcp-consumption-dashbord
+chmod +x deploy_ai_dashboard.sh
+./deploy_ai_dashboard.sh
+```
+
+### Interactive Prompt Arguments
+
+The script will prompt you for the following inputs:
+
+| Input / Argument | Description | Default Value |
+| :--- | :--- | :--- |
+| **Google Cloud Project ID** | Target GCP project where the BigQuery views and analytics dataset will reside. | Active `gcloud` project (`gcloud config get-value project`). |
+| **BigQuery Dataset ID** | Target dataset for the views. Accepts bare `dataset` or `project.dataset`. | `ai_billing_dashboard` |
+| **Dataset Location** | Geographic location for the dataset. **Must match** your billing export dataset location (e.g. `US`, `EU`). | `US` |
+| **Data Source Mode** | **`1` (Production mode — Default)**: Connects to live Cloud Billing Export.<br>**`2` (Demo mode)**: Generates 60 days of synthetic AI billing data for sandbox testing. | `1` |
+| **Billing Export Table** *(Mode 1 only)* | The source billing export table. The script automatically discovers `gcp_billing_export_*` tables and presents a numbered menu (prioritizing detailed resource exports). | `1` (Top recommended table) |
+
+Upon completion, the script outputs your personalized **1-click Looker Studio template clone link**.
+
+> [!TIP]
+> **Operational Best Practices:**
+> - **Viewer's Credentials:** In Looker Studio, configure data source credentials to **Viewer's Credentials** so access respects Google Cloud IAM permissions and prevents unauthorized exposure.
+> - **Sharing Reports:** The generated URL opens the report in edit/create mode. Use the **Share** button in Looker Studio to distribute view-only links to stakeholders.
+
+---
+
+## 4. Implementation & Detailed Guides
+
+All implementation steps, deployment options, schema documentation, and troubleshooting guides are available in:
 
 👉 **[Complete Implementation & Deployment Guide](demo_and_production_guide.md)**
 - **Step-by-step Demo Deployment**: Generate 60 days of realistic dummy AI billing data with 1 command.
-- **Production Deployment**: Connect to your live Google Cloud Billing export table in BigQuery.
+- **Production Deployment**: Connect to your live Google Cloud Billing export table in BigQuery with automatic table discovery.
 - **Zero-Downtime Transition**: Switch from demo data to production export without reconnecting or editing Looker Studio reports.
 - **Looker Studio Setup**: 1-click template cloning via Linking API (`c7991054-d499-4aa0-9b2a-e8f98d92ea55`).
+- **Security & Service Accounts**: Step-by-step setup for unattended CI/CD or service account execution.
 - **Master View Schema Reference**: Full column catalog and data types.
 - **Customizations**: Label keys, service lists, regex model parsing, and anomaly sensitivity.
 - **Troubleshooting**: Solutions for common BigQuery, IAM, and visualization issues.
@@ -77,7 +111,7 @@ All implementation steps, deployment options, schema documentation, and troubles
 
 ---
 
-## 4. Frequently Asked Questions (FAQ)
+## 5. Frequently Asked Questions (FAQ)
 
 **Does the deployment script create dummy data?**
 Only if you choose **Demo mode (option 2)**. In **Production mode (option 1)**, the script creates views directly over your existing billing export table without copying or generating any data.
