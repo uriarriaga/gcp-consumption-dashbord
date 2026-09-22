@@ -20,20 +20,29 @@ It depends on **where** the calculated field was created in the template report.
 To ensure that every chart and scorecard works immediately out-of-the-box when a client runs `create_looker_studio_dashboard.py`—without requiring manual field creation—use the two-tier approach below:
 
 ### Rule 1: Put Row-Level Calculations Directly in the BigQuery View (`vw_ai_consumption_master`)
-Any calculation that operates on a **single row** (or converts units, parses strings, or floors negative values) should be defined as a native SQL column inside `vw_ai_consumption_master` in `deploy_ai_dashboard.sh`.
+Any calculation that operates on a **single row** (or converts units, parses strings, or floors negative values) is defined as a native SQL column inside `vw_ai_consumption_master` in `deploy_ai_dashboard.sh`.
 
 Because BigQuery exposes these as physical view columns, Looker Studio imports them automatically when connecting to `ds0`.
 
-**Examples to include in SQL (`vw_ai_consumption_master`):**
+**Implemented Columns in `vw_ai_consumption_master`:**
 ```sql
 -- 1. Estimated Million Tokens (row-level unit conversion)
 CASE
-  WHEN usage_unit = 'token' THEN usage_amount / 1000000.0
-  ELSE usage_amount
+  WHEN usage.unit = 'token' THEN usage.amount / 1000000.0
+  ELSE usage.amount
 END AS estimated_million_tokens,
 
 -- 2. Non-negative Net Cost (prevents Donut/Pie chart errors)
-GREATEST(0.0, cost + COALESCE((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS net_cost
+GREATEST(0.0, cost + COALESCE((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS net_cost,
+
+-- 3. Absolute Total Credits / Savings
+ABS(COALESCE((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS abs_total_credits,
+
+-- 4. Isolated GenAI Net Cost (enables straightforward ratio aggregation)
+CASE
+  WHEN ai_category = 'Generative AI' THEN net_cost
+  ELSE 0.0
+END AS genai_net_cost
 ```
 
 ---
@@ -43,16 +52,17 @@ Ratios and percentages (such as `GenAI Spend %` or `Effective Discount %`) must 
 
 Instead of creating these inside the Data Source editor, create them directly on the Scorecard/Chart inside your master template (`c7991054-d499-4aa0-9b2a-e8f98d92ea55`):
 
-1. Open the master template report in **Edit** mode.
+1. Open the master template report in **Edit** mode (`https://lookerstudio.google.com/reporting/c7991054-d499-4aa0-9b2a-e8f98d92ea55`).
 2. Click on the target **Scorecard** or **Chart**.
 3. In the right-hand **Setup** panel, under **Metric**, click the current metric (or **Add metric**).
 4. Click **+ Create field** at the bottom of the field picker dropdown.
 5. Enter the **Name**, **Formula**, and **Type**, then click **Apply**:
 
-| Metric Name | Chart-Level Formula | Data Type |
-| :--- | :--- | :--- |
-| **GenAI Spend %** | `SUM(CASE WHEN ai_category = 'Generative AI' THEN net_cost ELSE 0 END) / SUM(net_cost)` | Numeric → **Percent** |
-| **Effective Discount %** | `ABS(SUM(total_credits)) / SUM(gross_cost)` | Numeric → **Percent** |
-| **Cost per Million Units** | ` (SUM(net_cost) / SUM(usage_amount)) * 1000000` | Numeric → **Currency (USD)** |
+| Metric Name | Chart-Level Formula | Data Type | Visual Format |
+| :--- | :--- | :--- | :--- |
+| **Effective Discount %** | `SAFE_DIVIDE(SUM(abs_total_credits), SUM(gross_cost))` | Numeric | **Percent** |
+| **GenAI Spend %** | `SAFE_DIVIDE(SUM(genai_net_cost), SUM(net_cost))` | Numeric | **Percent** |
+| **Cost per Million Tokens** | `SAFE_DIVIDE(SUM(net_cost), SUM(estimated_million_tokens))` | Numeric | **Currency (USD)** |
 
-Because these formulas live on the visual widget in the template report and only reference base columns (`ai_category`, `net_cost`, `total_credits`, `gross_cost`, `usage_amount`) that exist in `vw_ai_consumption_master`, they are **100% preserved** whenever the dashboard is cloned.
+Because these formulas live on the visual widget in the template report and only reference base columns (`genai_net_cost`, `net_cost`, `abs_total_credits`, `gross_cost`, `estimated_million_tokens`) that exist in `vw_ai_consumption_master`, they are **100% preserved** whenever the dashboard is cloned.
+

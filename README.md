@@ -31,7 +31,9 @@ This toolkit solves that by deploying a **single, curated BigQuery view** (`vw_a
 | **Category classification** | Buckets spend into `Generative AI`, `Agentic & Conversational AI`, `AI Compute (GPU/TPU)`, `Vector Search & Embeddings Infra`, `Enterprise AI Subscriptions (Seats)`, and `Perception & Cognitive AI`. |
 | **Model-family parsing** | Extracts model families from SKU descriptions (Gemini 1.5 Pro/Flash, Gemini 2.0, Gemini 2.5/3.5, Anthropic Claude, Imagen, Embeddings, Vector Search, Gemini Code Assist, A100 / H100 / L4 GPUs, TPUs). |
 | **Token modality** | Splits GenAI SKUs into `Input (Prompt)`, `Output (Response)`, `Output (Thinking / Reasoning)`, `Context Cache`, and `Subscription / Seat`. |
-| **True net cost** | Computes `net_cost = gross_cost + credits` (credits are negative in the export) so CUDs, SUDs, and promotions are reflected. |
+| **True net cost** | Computes `net_cost = GREATEST(0, gross_cost + credits)` so CUDs, SUDs, and promotions are reflected without negative chart distortion. |
+| **Token & unit scaling** | Exposes `estimated_million_tokens` natively in SQL, converting raw token counts into millions for readable aggregations. |
+| **Clone-safe ratio helpers** | Pre-calculates `abs_total_credits` and `genai_net_cost` at the row level so Looker Studio ratio metrics (`Effective Discount %`, `GenAI Spend %`) survive 1-click dashboard cloning without manual re-creation. |
 | **Chargeback labels** | Surfaces `team`, `environment`, `cost_center`, and `app` labels for showback / chargeback. |
 | **Anomaly detection** | A companion view (`vw_ai_cost_anomaly_alerts`) flags any project whose daily AI spend exceeds 1.8× its 7-day rolling average. |
 

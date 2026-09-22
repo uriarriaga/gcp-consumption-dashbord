@@ -260,7 +260,12 @@ WITH raw_billing AS (
     usage.unit AS usage_unit,
     cost AS gross_cost,
     COALESCE((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0) AS total_credits,
+    ABS(COALESCE((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS abs_total_credits,
     GREATEST(0.0, cost + COALESCE((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS net_cost,
+    CASE
+      WHEN usage.unit = 'token' THEN usage.amount / 1000000.0
+      ELSE usage.amount
+    END AS estimated_million_tokens,
     currency,
     -- Extract organizational metadata from labels (customize if different)
     (SELECT value FROM UNNEST(labels) WHERE key = 'environment') AS label_env,
@@ -293,48 +298,57 @@ WITH raw_billing AS (
         AND REGEXP_CONTAINS(sku.description, r'(?i)Nvidia|A100|H100|V100|L4|T4|P100|TPU|Tensor')
       )
     )
+),
+classified AS (
+  SELECT
+    *,
+    CASE
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Vector Search|Matching Engine') THEN 'Vector Search & Embeddings Infra'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Subscription|Code Assist|Gemini Enterprise|Notebook Enterprise') THEN 'Enterprise AI Subscriptions (Seats)'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini|Claude|PaLM|Imagen|Codey|Embeddings|Text Generation|Multimodal|Provisioned Throughput') THEN 'Generative AI'
+      WHEN service_name IN ('Dialogflow Enterprise Edition', 'Dialogflow CX', 'Discovery Engine', 'Vertex AI Search') THEN 'Agentic & Conversational AI'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Nvidia|A100|H100|V100|L4|T4|P100|TPU') THEN 'AI Compute (GPU/TPU)'
+      ELSE 'Perception & Cognitive AI'
+    END AS ai_category,
+
+    CASE
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Vector Search|Matching Engine') THEN 'Vector Search'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Code Assist') THEN 'Gemini Code Assist'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*Enterprise|Vertex AI Search') THEN 'Vertex AI Search / Enterprise'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*1\.5.*Pro') THEN 'Gemini 1.5 Pro'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*1\.5.*Flash') THEN 'Gemini 1.5 Flash'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*2\.0') THEN 'Gemini 2.0'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*2\.5.*Pro') THEN 'Gemini 2.5 Pro'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*2\.5.*Flash') THEN 'Gemini 2.5 Flash'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*3\.5') THEN 'Gemini 3.5 Flash/Pro'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Claude') THEN 'Anthropic Claude'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Imagen') THEN 'Imagen'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Embedding') THEN 'Embeddings'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Provisioned Throughput') THEN 'Provisioned Throughput'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)A100') THEN 'NVIDIA A100 GPU'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)H100') THEN 'NVIDIA H100 GPU'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)L4') THEN 'NVIDIA L4 GPU'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)TPU') THEN 'Google Cloud TPU'
+      ELSE service_name
+    END AS model_or_resource_family,
+
+    CASE
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Thinking') THEN 'Output (Thinking / Reasoning)'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Input|Prompt') THEN 'Input (Prompt)'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Output|Candidate') THEN 'Output (Response)'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Context Caching') THEN 'Context Cache'
+      WHEN REGEXP_CONTAINS(sku_description, r'(?i)Subscription|Seat|Month') THEN 'Subscription / Seat'
+      ELSE 'API Request / Hourly'
+    END AS modality_type
+  FROM raw_billing
 )
 SELECT
   *,
   CASE
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Vector Search|Matching Engine') THEN 'Vector Search & Embeddings Infra'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Subscription|Code Assist|Gemini Enterprise|Notebook Enterprise') THEN 'Enterprise AI Subscriptions (Seats)'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini|Claude|PaLM|Imagen|Codey|Embeddings|Text Generation|Multimodal|Provisioned Throughput') THEN 'Generative AI'
-    WHEN service_name IN ('Dialogflow Enterprise Edition', 'Dialogflow CX', 'Discovery Engine', 'Vertex AI Search') THEN 'Agentic & Conversational AI'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Nvidia|A100|H100|V100|L4|T4|P100|TPU') THEN 'AI Compute (GPU/TPU)'
-    ELSE 'Perception & Cognitive AI'
-  END AS ai_category,
-
-  CASE
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Vector Search|Matching Engine') THEN 'Vector Search'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Code Assist') THEN 'Gemini Code Assist'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*Enterprise|Vertex AI Search') THEN 'Vertex AI Search / Enterprise'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*1\.5.*Pro') THEN 'Gemini 1.5 Pro'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*1\.5.*Flash') THEN 'Gemini 1.5 Flash'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*2\.0') THEN 'Gemini 2.0'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*2\.5.*Pro') THEN 'Gemini 2.5 Pro'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*2\.5.*Flash') THEN 'Gemini 2.5 Flash'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Gemini.*3\.5') THEN 'Gemini 3.5 Flash/Pro'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Claude') THEN 'Anthropic Claude'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Imagen') THEN 'Imagen'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Embedding') THEN 'Embeddings'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Provisioned Throughput') THEN 'Provisioned Throughput'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)A100') THEN 'NVIDIA A100 GPU'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)H100') THEN 'NVIDIA H100 GPU'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)L4') THEN 'NVIDIA L4 GPU'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)TPU') THEN 'Google Cloud TPU'
-    ELSE service_name
-  END AS model_or_resource_family,
-
-  CASE
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Thinking') THEN 'Output (Thinking / Reasoning)'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Input|Prompt') THEN 'Input (Prompt)'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Output|Candidate') THEN 'Output (Response)'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Context Caching') THEN 'Context Cache'
-    WHEN REGEXP_CONTAINS(sku_description, r'(?i)Subscription|Seat|Month') THEN 'Subscription / Seat'
-    ELSE 'API Request / Hourly'
-  END AS modality_type
-FROM raw_billing;
+    WHEN ai_category = 'Generative AI' THEN net_cost
+    ELSE 0.0
+  END AS genai_net_cost
+FROM classified;
 ```
 
 ### 5.5 Validate the Production View
@@ -377,9 +391,12 @@ bq rm -f -t <PROJECT_ID>:ai_billing_dashboard.sample_ai_billing_export
 | `service_id` / `service_name` | STRING | Google Cloud service name (e.g. `Vertex AI`). |
 | `sku_id` / `sku_description` | STRING | Raw SKU identifier and description. |
 | `usage_amount` / `usage_unit` | FLOAT64 / STRING | Metered consumption (tokens, requests, hours, pages). |
+| `estimated_million_tokens` | FLOAT64 | Metered consumption scaled to millions when `usage_unit = 'token'` (native row-level unit normalization). |
 | `gross_cost` | FLOAT64 | List-price cost before credits. |
 | `total_credits` | FLOAT64 | Sum of all promotional, CUD, or SUD credits (negative float). |
-| `net_cost` | FLOAT64 | `GREATEST(0, gross_cost + total_credits)`. |
+| `abs_total_credits` | FLOAT64 | Absolute positive value of all realized credits/discounts (`ABS(total_credits)`). |
+| `net_cost` | FLOAT64 | True net cost (`GREATEST(0, gross_cost + total_credits)`). |
+| `genai_net_cost` | FLOAT64 | Net cost specifically for `Generative AI` category (`0.0` for all other categories). Enables instant `SUM(genai_net_cost) / SUM(net_cost)` ratios. |
 | `currency` | STRING | Billing currency. |
 | `label_env` / `label_team` / `label_cost_center` / `label_app` | STRING | Extracted organizational metadata from labels array. |
 | `ai_category` | STRING | Classified bucket: `Generative AI`, `Agentic & Conversational AI`, `AI Compute (GPU/TPU)`, `Vector Search & Embeddings Infra`, `Enterprise AI Subscriptions (Seats)`, `Perception & Cognitive AI`. |
@@ -390,21 +407,21 @@ bq rm -f -t <PROJECT_ID>:ai_billing_dashboard.sample_ai_billing_export
 
 ## 7. Building & Configuring the Looker Studio Dashboard
 
-### 7.1 Recommended Data-Source Settings
+### 7.1 Recommended Data-Source Settings & Calculated Fields
 
-| Field | Type | Aggregation |
-| :--- | :--- | :--- |
-| `usage_date` | Date (YYYYMMDD) | — |
-| `net_cost`, `gross_cost`, `total_credits` | Currency (USD) | Sum |
-| `usage_amount` | Number | Sum |
+Because the Looker Studio Linking API regenerates a brand-new BigQuery data source upon cloning, row-level metrics (`estimated_million_tokens`, `abs_total_credits`, `genai_net_cost`) are **natively exposed by the BigQuery view**.
 
-Add the following calculated fields in Looker Studio:
+For ratio scorecards in the template report (`c7991054-d499-4aa0-9b2a-e8f98d92ea55`), configure formulas as **Chart-Level (Report-Level) fields** directly on each scorecard widget (Select Scorecard → Setup panel → Add metric → **+ Create field**):
 
-```
-Effective Discount %    = SAFE_DIVIDE(ABS(SUM(total_credits)), SUM(gross_cost))
-GenAI Spend %           = SAFE_DIVIDE(SUM(CASE WHEN ai_category = 'Generative AI' THEN net_cost ELSE 0 END), SUM(net_cost))
-Estimated Million Tokens = CASE WHEN usage_unit = 'token' THEN usage_amount / 1000000 ELSE usage_amount END
-```
+| Metric Name | Chart-Level Formula | Type | Format |
+| :--- | :--- | :--- | :--- |
+| **Effective Discount %** | `SAFE_DIVIDE(SUM(abs_total_credits), SUM(gross_cost))` | Numeric | **Percent** |
+| **GenAI Spend %** | `SAFE_DIVIDE(SUM(genai_net_cost), SUM(net_cost))` | Numeric | **Percent** |
+| **Cost per Million Tokens** | `SAFE_DIVIDE(SUM(net_cost), SUM(estimated_million_tokens))` | Numeric | **Currency (USD)** |
+
+> [!TIP]
+> Defining these as chart-level fields on the template ensures they are **100% preserved** whenever any user clones the dashboard via the Linking API.
+
 
 ### 7.2 Suggested Page Layout
 
