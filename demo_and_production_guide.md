@@ -428,9 +428,9 @@ For ratio scorecards in the template report (`c7991054-d499-4aa0-9b2a-e8f98d92ea
 | Page | Suggested Components |
 | :--- | :--- |
 | **Page 1: Executive Overview** | **Global Controls**: Date-range control · dropdowns for `ai_category`, `project_name`, `label_env`<br>**Scorecards**: Net Spend w/ previous-period comparison, Gross List Cost, Realized Credits/Savings, **Effective Discount %** (`ABS(credits)/gross`), GenAI Share %<br>**Trends & Breakdown**: Stacked time-series by `ai_category` · Donut chart by `ai_category`<br>**Top 10 Concentration Table**: Dimensions: `sku_description`, `service_name`, `usage_unit` \| Metrics: `SUM(usage_amount)`, `SUM(net_cost)`, `% of Total net_cost` \| Sort descending by `net_cost`, limit to **Top 10** rows |
-| **Page 2: GenAI & Reasoning Deep-Dive** | Filter `ai_category = 'Generative AI'` · horizontal bar by `model_or_resource_family` · pivot table `model_or_resource_family` × `modality_type` (isolating Prompt, Standard Response, Thinking/Reasoning tokens, and Context Cache) with tokens and net cost |
+| **Page 2: GenAI & Reasoning Deep-Dive** | Filter to `ai_category = 'Generative AI'` (via chart-level reusable filter `Include ai_category = 'Generative AI'` or a page dropdown with default selection) · horizontal bar by `model_or_resource_family` · pivot table `model_or_resource_family` × `modality_type` (isolating Prompt, Standard Response, Thinking/Reasoning tokens, and Context Cache) with tokens and net cost |
 | **Page 3: Attribution** | Treemap `label_team` → `project_name` · table by `label_cost_center`, `label_env` with % of total spend |
-| **Page 4: AI Infrastructure & Vector Search** | Filter `ai_category IN ('AI Compute (GPU/TPU)', 'Vector Search & Embeddings Infra')` · scorecard accelerator hours · donut by accelerator type · table by `project_name`, `region`, `sku_description` |
+| **Page 4: AI Infrastructure & Vector Search** | Filter to `ai_category IN ('AI Compute (GPU/TPU)', 'Vector Search & Embeddings Infra')` · scorecard accelerator hours · donut by accelerator type · table by `project_name`, `region`, `sku_description` |
 
 ### 7.3 Scheduled Anomaly Alerting (Optional)
 

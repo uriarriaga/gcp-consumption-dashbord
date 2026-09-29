@@ -226,7 +226,11 @@ Add the following controls across the top of every dashboard page:
 
 ### D. Page 2: Generative AI & Token Deep-Dive
 
-Filter this page to `ai_category = 'Generative AI'` using page-level filters.
+To isolate Generative AI spend, apply a chart filter to the charts on this page (or add a Page dropdown control with `Default selection: Generative AI`):
+* In the chart's **Setup** panel, scroll to **Filter** → **+ Add a filter** → **Create a filter**:
+  * **Name**: `Only Generative AI`
+  * **Rule**: `Include` | **Field**: `ai_category` | **Condition**: `Equal to (=)` | **Value**: `Generative AI`
+* *(Once created, you can reuse `Only Generative AI` on the other charts on this page with 1 click).*
 
 | Widget Type | Title | Dimension(s) | Metric(s) | Notes |
 | :--- | :--- | :--- | :--- | :--- |
@@ -248,7 +252,10 @@ Filter this page to `ai_category = 'Generative AI'` using page-level filters.
 
 ### F. Page 4: AI Compute Infrastructure (GPUs & TPUs)
 
-Filter this page to `ai_category = 'AI Compute (GPU/TPU)'`.
+Apply a chart filter to the charts on this page:
+* In the chart's **Setup** panel, scroll to **Filter** → **+ Add a filter** → **Create a filter**:
+  * **Name**: `AI Infrastructure & Vector`
+  * **Rule**: `Include` | **Field**: `ai_category` | **Condition**: `In list` | **Values**: `AI Compute (GPU/TPU)`, `Vector Search & Embeddings Infra`
 
 | Widget Type | Title | Dimension(s) | Metric(s) | Notes |
 | :--- | :--- | :--- | :--- | :--- |
