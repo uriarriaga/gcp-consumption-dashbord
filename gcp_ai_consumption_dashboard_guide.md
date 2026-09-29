@@ -265,6 +265,25 @@ Apply a chart filter to the charts on this page:
 
 ---
 
+### G. Page 5: Enterprise AI Subscriptions (Seats & Licenses)
+
+Apply a chart filter to the charts on this page (or add a Page dropdown control with `Default selection: Enterprise AI Subscriptions (Seats)`):
+* In the chart's **Setup** panel, scroll to **Filter** → **+ Add a filter** → **Create a filter**:
+  * **Name**: `Only Subscriptions`
+  * **Rule**: `Include` | **Field**: `ai_category` | **Condition**: `Equal to (=)` | **Value**: `Enterprise AI Subscriptions (Seats)`
+
+| Widget Type | Title | Dimension(s) | Metric(s) | Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| **Scorecard** | Total Subscription Spend | — | `SUM(net_cost)` | Currency (USD), comparison to previous period |
+| **Scorecard** | Total Billed Seat-Months | — | `SUM(usage_amount)` | Numeric (Integer/Decimal seat-months) |
+| **Scorecard** | Avg Cost per Seat-Month | — | Chart-Level Field: `SUM(net_cost) / SUM(usage_amount)` | Currency (USD) |
+| **Scorecard** | Subscription Credits / CUDs | — | `SUM(total_credits)` | Currency (USD) |
+| **Donut Chart** | Spend by AI Subscription | `model_or_resource_family` | `SUM(net_cost)` | Gemini Code Assist vs Vertex AI Search |
+| **Stacked Bar Chart** | Monthly Subscription Spend Trend | `invoice_month`, Breakdown: `model_or_resource_family` | `SUM(net_cost)` | Shows license ramp by month |
+| **Detailed Table** | Subscription SKU & License Breakdown | `model_or_resource_family`, `sku_description` | 1. `SUM(usage_amount)` (Seat-Months)<br>2. `SUM(gross_cost)`<br>3. `SUM(net_cost)`<br>4. Chart-Level Field: `SUM(net_cost) / SUM(usage_amount)` (Avg Cost/Seat) | Sorted descending by `net_cost` |
+
+---
+
 ## 6. Step 4: Configure Automated Anomaly Alerts
 
 To catch unintended runaways or sudden surges in LLM token usage, set up a daily scheduled alert query in BigQuery or BigQuery Scheduled Queries to notify your team.

@@ -299,50 +299,73 @@ if [[ "$DATA_MODE" == "2" ]]; then
     UNION ALL SELECT 'ai-research-lab', 'AI Research Lab', 'dev', 'Data Science', 'CC-104'
   ),
   services_and_skus AS (
-    SELECT 'Vertex AI' AS service_name, 'C7E2-9256-1C43' AS service_id, 'Gemini 1.5 Pro - Input Prompt Tokens' AS sku_description, 'token' AS usage_unit, 180.0 AS base_daily_cost, 'Generative AI' AS cat
-    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Gemini 1.5 Pro - Output Candidate Tokens', 'token', 320.0, 'Generative AI'
-    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Gemini 1.5 Flash - Input Prompt Tokens', 'token', 65.0, 'Generative AI'
-    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Gemini 1.5 Flash - Output Candidate Tokens', 'token', 110.0, 'Generative AI'
-    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Gemini 2.0 Flash - Input Prompt Tokens', 'token', 95.0, 'Generative AI'
-    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Gemini 2.0 Flash - Output Candidate Tokens', 'token', 145.0, 'Generative AI'
-    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Claude 3.5 Sonnet - Input Tokens', 'token', 210.0, 'Generative AI'
-    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Claude 3.5 Sonnet - Output Tokens', 'token', 390.0, 'Generative AI'
-    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Text Embedding Gecko / Multimodal Embeddings', 'token', 45.0, 'Generative AI'
-    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Imagen 3 - Image Generation', 'request', 125.0, 'Generative AI'
-    UNION ALL SELECT 'Discovery Engine', 'A123-4567-8901', 'Vertex AI Search & Conversation Queries', 'request', 160.0, 'Agentic & Conversational AI'
-    UNION ALL SELECT 'Dialogflow CX', 'B234-5678-9012', 'Dialogflow CX Conversation Sessions', 'request', 190.0, 'Agentic & Conversational AI'
-    UNION ALL SELECT 'Document AI', 'D456-7890-1234', 'Document AI - Form Parser Pages', 'page', 140.0, 'Perception & Cognitive AI'
-    UNION ALL SELECT 'Compute Engine', '6F81-5844-456A', 'NVIDIA A100 80GB GPU running in Americas', 'hour', 420.0, 'AI Compute (GPU/TPU)'
-    UNION ALL SELECT 'Compute Engine', '6F81-5844-456A', 'NVIDIA H100 80GB GPU running in Americas', 'hour', 680.0, 'AI Compute (GPU/TPU)'
-    UNION ALL SELECT 'Compute Engine', '6F81-5844-456A', 'NVIDIA L4 GPU running in Americas', 'hour', 150.0, 'AI Compute (GPU/TPU)'
-    UNION ALL SELECT 'Compute Engine', '6F81-5844-456A', 'Cloud TPU v5e Pod Slice Running in us-central1', 'hour', 290.0, 'AI Compute (GPU/TPU)'
-    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Vector Search Index Serving e2-standard-16', 'hour', 380.0, 'Vector Search & Embeddings Infra'
-    UNION ALL SELECT 'Duet AI', 'E567-8901-2345', 'Duet AI: Gemini Code Assist Subscription', 'month', 240.0, 'Enterprise AI Subscriptions (Seats)'
-    UNION ALL SELECT 'Vertex AI Search', 'F678-9012-3456', 'Vertex AI Search: Gemini Enterprise Standard 1-Yr Subscription', 'month', 190.0, 'Enterprise AI Subscriptions (Seats)'
-    UNION ALL SELECT 'Gemini API', 'G789-0123-4567', 'Gemini 2.5 Flash - Thinking Text Output Tokens', 'token', 170.0, 'Generative AI'
-    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Gemini 2.5 Pro - Thinking Text Output Tokens', 'token', 230.0, 'Generative AI'
-    UNION ALL SELECT 'Gemini API', 'G789-0123-4567', 'Gemini 3.5 Flash - Input Prompt Tokens', 'token', 120.0, 'Generative AI'
-    UNION ALL SELECT 'Gemini API', 'G789-0123-4567', 'Gemini 3.5 Flash - Output Candidate Tokens', 'token', 260.0, 'Generative AI'
+    SELECT 'Vertex AI' AS service_name, 'C7E2-9256-1C43' AS service_id, 'Gemini 1.5 Pro - Input Prompt Tokens' AS sku_description, 'token' AS usage_unit, 0.00000125 AS unit_price, 45000000.0 AS base_daily_units, 'Generative AI' AS cat
+    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Gemini 1.5 Pro - Output Candidate Tokens', 'token', 0.000005, 22000000.0, 'Generative AI'
+    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Gemini 1.5 Flash - Input Prompt Tokens', 'token', 0.000000075, 300000000.0, 'Generative AI'
+    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Gemini 1.5 Flash - Output Candidate Tokens', 'token', 0.0000003, 120000000.0, 'Generative AI'
+    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Gemini 2.0 Flash - Input Prompt Tokens', 'token', 0.0000001, 250000000.0, 'Generative AI'
+    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Gemini 2.0 Flash - Output Candidate Tokens', 'token', 0.0000004, 100000000.0, 'Generative AI'
+    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Claude 3.5 Sonnet - Input Tokens', 'token', 0.000003, 25000000.0, 'Generative AI'
+    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Claude 3.5 Sonnet - Output Tokens', 'token', 0.000015, 10000000.0, 'Generative AI'
+    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Text Embedding Gecko / Multimodal Embeddings', 'token', 0.000000025, 600000000.0, 'Generative AI'
+    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Imagen 3 - Image Generation', 'request', 0.03, 1800.0, 'Generative AI'
+    UNION ALL SELECT 'Discovery Engine', 'A123-4567-8901', 'Vertex AI Search & Conversation Queries', 'request', 0.005, 12000.0, 'Agentic & Conversational AI'
+    UNION ALL SELECT 'Dialogflow CX', 'B234-5678-9012', 'Dialogflow CX Conversation Sessions', 'request', 0.007, 10000.0, 'Agentic & Conversational AI'
+    UNION ALL SELECT 'Document AI', 'D456-7890-1234', 'Document AI - Form Parser Pages', 'page', 0.05, 1200.0, 'Perception & Cognitive AI'
+    UNION ALL SELECT 'Compute Engine', '6F81-5844-456A', 'NVIDIA A100 80GB GPU running in Americas', 'hour', 3.67, 36.0, 'AI Compute (GPU/TPU)'
+    UNION ALL SELECT 'Compute Engine', '6F81-5844-456A', 'NVIDIA H100 80GB GPU running in Americas', 'hour', 10.50, 24.0, 'AI Compute (GPU/TPU)'
+    UNION ALL SELECT 'Compute Engine', '6F81-5844-456A', 'NVIDIA L4 GPU running in Americas', 'hour', 0.85, 48.0, 'AI Compute (GPU/TPU)'
+    UNION ALL SELECT 'Compute Engine', '6F81-5844-456A', 'Cloud TPU v5e Pod Slice Running in us-central1', 'hour', 1.80, 48.0, 'AI Compute (GPU/TPU)'
+    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Vector Search Index Serving e2-standard-16', 'hour', 1.25, 48.0, 'Vector Search & Embeddings Infra'
+    UNION ALL SELECT 'Duet AI', 'E567-8901-2345', 'Duet AI: Gemini Code Assist Subscription', 'month', 45.0, 0.80, 'Enterprise AI Subscriptions (Seats)'
+    UNION ALL SELECT 'Vertex AI Search', 'F678-9012-3456', 'Vertex AI Search: Gemini Enterprise Standard 1-Yr Subscription', 'month', 35.0, 0.60, 'Enterprise AI Subscriptions (Seats)'
+    UNION ALL SELECT 'Gemini API', 'G789-0123-4567', 'Gemini 2.5 Flash - Thinking Text Output Tokens', 'token', 0.0000006, 70000000.0, 'Generative AI'
+    UNION ALL SELECT 'Vertex AI', 'C7E2-9256-1C43', 'Gemini 2.5 Pro - Thinking Text Output Tokens', 'token', 0.0000075, 15000000.0, 'Generative AI'
+    UNION ALL SELECT 'Gemini API', 'G789-0123-4567', 'Gemini 3.5 Flash - Input Prompt Tokens', 'token', 0.00000015, 200000000.0, 'Generative AI'
+    UNION ALL SELECT 'Gemini API', 'G789-0123-4567', 'Gemini 3.5 Flash - Output Candidate Tokens', 'token', 0.0000006, 90000000.0, 'Generative AI'
+  ),
+  raw_combinations AS (
+    SELECT
+      d.day,
+      p.project_id,
+      p.project_name,
+      p.env,
+      p.team,
+      p.cost_center,
+      s.service_id,
+      s.service_name,
+      s.sku_description,
+      s.usage_unit,
+      s.unit_price,
+      CASE
+        WHEN s.usage_unit = 'month' THEN ROUND(s.base_daily_units * (0.85 + RAND() * 0.30), 4)
+        WHEN s.usage_unit = 'hour' THEN ROUND(s.base_daily_units * (0.75 + RAND() * 0.50), 2)
+        WHEN s.usage_unit = 'token' THEN ROUND(s.base_daily_units * (0.70 + RAND() * 0.60), 0)
+        ELSE ROUND(s.base_daily_units * (0.70 + RAND() * 0.60), 0)
+      END AS generated_units
+    FROM date_range d
+    CROSS JOIN projects p
+    CROSS JOIN services_and_skus s
   )
   SELECT
     '01ABCD-23EF45-678901' AS billing_account_id,
-    TIMESTAMP(d.day) AS usage_start_time,
-    TIMESTAMP_ADD(TIMESTAMP(d.day), INTERVAL 1 DAY) AS usage_end_time,
+    TIMESTAMP(r.day) AS usage_start_time,
+    TIMESTAMP_ADD(TIMESTAMP(r.day), INTERVAL 1 DAY) AS usage_end_time,
     TIMESTAMP(CURRENT_TIMESTAMP()) AS export_time,
     STRUCT(
-      p.project_id AS id,
-      p.project_name AS name,
+      r.project_id AS id,
+      r.project_name AS name,
       '123456789' AS number,
-      [STRUCT('env' AS key, p.env AS value)] AS labels,
+      [STRUCT('env' AS key, r.env AS value)] AS labels,
       '' AS ancestry_numbers
     ) AS project,
     STRUCT(
-      s.service_id AS id,
-      s.service_name AS description
+      r.service_id AS id,
+      r.service_name AS description
     ) AS service,
     STRUCT(
       GENERATE_UUID() AS id,
-      s.sku_description AS description
+      r.sku_description AS description
     ) AS sku,
     STRUCT(
       'us-central1' AS location,
@@ -351,29 +374,27 @@ if [[ "$DATA_MODE" == "2" ]]; then
       'US' AS country
     ) AS location,
     STRUCT(
-      FORMAT_DATE('%Y%m', d.day) AS month
+      FORMAT_DATE('%Y%m', r.day) AS month
     ) AS invoice,
     'regular' AS cost_type,
     'USD' AS currency,
     1.0 AS currency_conversion_rate,
     STRUCT(
-      CAST(ROUND(RAND() * 5000000 + 250000, 2) AS FLOAT64) AS amount,
-      s.usage_unit AS unit,
-      CAST(ROUND(RAND() * 5000000 + 250000, 2) AS FLOAT64) AS amount_in_pricing_units,
-      s.usage_unit AS pricing_unit
+      CAST(r.generated_units AS FLOAT64) AS amount,
+      r.usage_unit AS unit,
+      CAST(r.generated_units AS FLOAT64) AS amount_in_pricing_units,
+      r.usage_unit AS pricing_unit
     ) AS usage,
-    ROUND(s.base_daily_cost * (0.7 + RAND() * 0.6), 2) AS cost,
-    IF(RAND() > 0.4, [STRUCT('Committed Use Discount' AS name, ROUND(-1 * s.base_daily_cost * (0.08 + RAND() * 0.07), 2) AS amount, 'CUD Credit' AS full_name, 'CREDIT-1' AS id, 'DISCOUNT' AS type)], []) AS credits,
+    ROUND(r.generated_units * r.unit_price, 2) AS cost,
+    IF(RAND() > 0.35, [STRUCT('Committed Use Discount' AS name, ROUND(-1 * (r.generated_units * r.unit_price) * (0.08 + RAND() * 0.07), 2) AS amount, 'CUD Credit' AS full_name, 'CREDIT-1' AS id, 'DISCOUNT' AS type)], []) AS credits,
     [
-      STRUCT('environment' AS key, p.env AS value),
-      STRUCT('team' AS key, p.team AS value),
-      STRUCT('cost_center' AS key, p.cost_center AS value),
+      STRUCT('environment' AS key, r.env AS value),
+      STRUCT('team' AS key, r.team AS value),
+      STRUCT('cost_center' AS key, r.cost_center AS value),
       STRUCT('app' AS key, 'Enterprise AI Platform' AS value)
     ] AS labels,
     [] AS system_labels
-  FROM date_range d
-  CROSS JOIN projects p
-  CROSS JOIN services_and_skus s;
+  FROM raw_combinations r;
   "
   echo -e "${GREEN}Sample billing export table populated successfully.${RESET}"
 fi
