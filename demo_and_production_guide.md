@@ -415,12 +415,12 @@ For ratio scorecards in the template report (`c7991054-d499-4aa0-9b2a-e8f98d92ea
 
 | Metric Name | Chart-Level Formula | Type | Format |
 | :--- | :--- | :--- | :--- |
-| **Effective Discount %** | `SAFE_DIVIDE(SUM(abs_total_credits), SUM(gross_cost))` | Numeric | **Percent** |
-| **GenAI Spend %** | `SAFE_DIVIDE(SUM(genai_net_cost), SUM(net_cost))` | Numeric | **Percent** |
-| **Cost per Million Tokens** | `SAFE_DIVIDE(SUM(net_cost), SUM(estimated_million_tokens))` | Numeric | **Currency (USD)** |
+| **Effective Discount %** | `SUM(abs_total_credits) / SUM(gross_cost)` | Numeric | **Percent** |
+| **GenAI Spend %** | `SUM(genai_net_cost) / SUM(net_cost)` | Numeric | **Percent** |
+| **Cost per Million Tokens** | `SUM(net_cost) / SUM(estimated_million_tokens)` | Numeric | **Currency (USD)** |
 
 > [!TIP]
-> Defining these as chart-level fields on the template ensures they are **100% preserved** whenever any user clones the dashboard via the Linking API.
+> Looker Studio formulas use the standard division operator (`/`) instead of BigQuery's `SAFE_DIVIDE`. Defining these as chart-level fields on the template ensures they are **100% preserved** whenever any user clones the dashboard via the Linking API.
 
 
 ### 7.2 Suggested Page Layout

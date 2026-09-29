@@ -215,8 +215,8 @@ Add the following controls across the top of every dashboard page:
 | **Scorecard** | Total Gross Spend | — | `SUM(gross_cost)` | Currency format |
 | **Scorecard** | Total Discounts/Credits | — | `SUM(total_credits)` | Negative value (savings) |
 | **Scorecard** | Total Discounts (Absolute) | — | `SUM(abs_total_credits)` | Positive savings amount |
-| **Scorecard** | Effective Discount % | — | Chart-Level Field: `SAFE_DIVIDE(SUM(abs_total_credits), SUM(gross_cost))` | Percentage format |
-| **Scorecard** | GenAI Share % | — | Chart-Level Field: `SAFE_DIVIDE(SUM(genai_net_cost), SUM(net_cost))` | Percentage format |
+| **Scorecard** | Effective Discount % | — | Chart-Level Field: `SUM(abs_total_credits) / SUM(gross_cost)` | Percentage format |
+| **Scorecard** | GenAI Share % | — | Chart-Level Field: `SUM(genai_net_cost) / SUM(net_cost)` | Percentage format |
 | **Scorecard** | Total Tokens (Millions) | — | `SUM(estimated_million_tokens)` | Metered token scale (M) |
 | **Time Series (Stacked Area)** | Daily Spend by Category | `usage_date`, Breakdown: `ai_category` | `SUM(net_cost)` | Smooth lines, show data points |
 | **Donut Chart** | Spend by AI Category | `ai_category` | `SUM(net_cost)` | Data labels as value & percentage |

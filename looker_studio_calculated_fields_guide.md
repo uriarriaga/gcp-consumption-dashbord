@@ -60,9 +60,12 @@ Instead of creating these inside the Data Source editor, create them directly on
 
 | Metric Name | Chart-Level Formula | Data Type | Visual Format |
 | :--- | :--- | :--- | :--- |
-| **Effective Discount %** | `SAFE_DIVIDE(SUM(abs_total_credits), SUM(gross_cost))` | Numeric | **Percent** |
-| **GenAI Spend %** | `SAFE_DIVIDE(SUM(genai_net_cost), SUM(net_cost))` | Numeric | **Percent** |
-| **Cost per Million Tokens** | `SAFE_DIVIDE(SUM(net_cost), SUM(estimated_million_tokens))` | Numeric | **Currency (USD)** |
+| **Effective Discount %** | `SUM(abs_total_credits) / SUM(gross_cost)` | Numeric | **Percent** |
+| **GenAI Spend %** | `SUM(genai_net_cost) / SUM(net_cost)` | Numeric | **Percent** |
+| **Cost per Million Tokens** | `SUM(net_cost) / SUM(estimated_million_tokens)` | Numeric | **Currency (USD)** |
+
+> [!NOTE]
+> Looker Studio formulas use the standard division operator (`/`) instead of BigQuery's `SAFE_DIVIDE`. Looker Studio automatically handles null/zero denominators safely, or you can use `CASE WHEN SUM(gross_cost) = 0 THEN 0 ELSE ... END`.
 
 Because these formulas live on the visual widget in the template report and only reference base columns (`genai_net_cost`, `net_cost`, `abs_total_credits`, `gross_cost`, `estimated_million_tokens`) that exist in `vw_ai_consumption_master`, they are **100% preserved** whenever the dashboard is cloned.
 
