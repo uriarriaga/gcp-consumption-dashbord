@@ -166,13 +166,34 @@ def main():
         or os.getenv("DATASET_ID")
     )
 
-    # Support project.dataset format in dataset argument
-    if dataset and ("." in dataset or ":" in dataset):
-        sep = "." if "." in dataset else ":"
-        parts = dataset.split(sep, 1)
-        if not args.project and not pos_project:
-            project = parts[0]
-        dataset = parts[1]
+    # Resolution hierarchy for View/Table ID:
+    table = (
+        args.table
+        or pos_table
+        or config.get("VIEW_NAME")
+        or "vw_ai_consumption_master"
+    )
+
+    # Support project.dataset or project.dataset.table format in dataset argument
+    if dataset:
+        dataset = dataset.strip().strip("`\"'")
+        normalized_ds = dataset.replace(":", ".")
+        parts = [p for p in normalized_ds.split(".") if p]
+        if len(parts) == 3:
+            if not args.project and not pos_project:
+                project = parts[0]
+            dataset = parts[1]
+            if not args.table and not pos_table and parts[2].startswith("vw_"):
+                table = parts[2]
+        elif len(parts) == 2:
+            if parts[1].startswith(("gcp_billing_export", "sample_ai_billing_export", "vw_")):
+                dataset = parts[0]
+                if not args.table and not pos_table and parts[1].startswith("vw_"):
+                    table = parts[1]
+            else:
+                if not args.project and not pos_project:
+                    project = parts[0]
+                dataset = parts[1]
 
     if not dataset and sys.stdin.isatty():
         try:
@@ -184,14 +205,6 @@ def main():
 
     if not dataset:
         dataset = "ai_billing_dashboard"
-
-    # Resolution hierarchy for View/Table ID:
-    table = (
-        args.table
-        or pos_table
-        or config.get("VIEW_NAME")
-        or "vw_ai_consumption_master"
-    )
 
     # Resolution for Template Report ID:
     template_id = (
@@ -232,4 +245,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -52,8 +52,8 @@ flowchart TD
 - Prompts for your **Google Cloud Project ID** (defaulting to active `gcloud` config or saved configuration).
 
 ### Step 1 — Dataset provisioning
-- Prompts for a **target dataset ID** (default: `ai_billing_dashboard`) and **location** (default: `US`).
-- Accepts bare dataset IDs (`billing_cost`) or fully-qualified IDs (`project.dataset`).
+- Prompts for a **target dataset ID** (default: `ai_billing_dashboard`) and **location** (auto-detected if the dataset exists, or default: `US`).
+- Accepts bare dataset IDs (`Billing_cost`), 2-part IDs (`project.dataset`), or full 3-part table IDs (`project.dataset.gcp_billing_export_...`) copied directly via **Copy ID** in the BigQuery Console (automatically extracting both the dataset and source billing export table).
 - Runs `bq mk --dataset` only if the dataset does not already exist (idempotent).
 
 > [!IMPORTANT]
@@ -142,8 +142,6 @@ ORDER BY net_usd DESC;"
 
 ### 4.5 Launch the Looker Studio Dashboard
 
-### 4.5 Launch the Looker Studio Dashboard
-
 `deploy_ai_dashboard.sh` automatically launches the Python cloner upon completion. If you want to re-generate the URL manually at any time, simply run:
 
 ```bash
@@ -171,7 +169,9 @@ Follow this section when you are ready to point the dashboard to your real Googl
 
 ### 5.1 Locate Your Billing Export Table
 
-In the BigQuery console or via CLI:
+In the BigQuery console, find your billing export table (`gcp_billing_export_resource_v1_...` or `gcp_billing_export_v1_...`), click the three dots (**⋮**) next to the table, and select **Copy ID** (which copies `project.dataset.table`).
+
+Alternatively, locate it via CLI:
 
 ```bash
 # List datasets in billing project
@@ -227,10 +227,10 @@ Re-run `deploy_ai_dashboard.sh`:
 | Prompt | Value / Behavior |
 | :--- | :--- |
 | `Enter your Google Cloud Project ID` | Target project where views will live (press **Enter** for active/saved default). |
-| `Enter BigQuery Dataset ID` | `ai_billing_dashboard` (or enter `project.dataset`). |
-| `Enter BigQuery Dataset Location` | **Must match** billing export dataset location (e.g. `US`). |
+| `Enter BigQuery Dataset ID` | `ai_billing_dashboard`, `project.dataset`, or paste the full 3-part `project.dataset.table` ID copied via **Copy ID** in the BigQuery Console. |
+| `Enter BigQuery Dataset Location` | Auto-detected if dataset exists, or `US` (**must match** billing export dataset location). |
 | `Select option [1 or 2]` | **`1`** (Production mode — default) |
-| `Detected Billing Export tables` | The script automatically finds all `gcp_billing_export_*` tables in the dataset, prioritizes detailed resource exports, and presents a numbered list. Press **`1`** to select the top recommended table. |
+| `Detected Billing Export tables` | If you pasted a 3-part table ID in the Dataset prompt, it is used automatically. Otherwise, the script scans the dataset for `gcp_billing_export_*` tables, prioritizes detailed resource exports, and presents a numbered list (press **`1`** for the top recommended table, or paste a full `project.dataset.table` path). |
 | `Pre-Deployment Summary` | Displays resolved project, dataset, source table, and views to verify before applying changes. |
 
 > [!NOTE]
@@ -532,6 +532,9 @@ gcloud auth activate-service-account --key-file=/path/to/sa-key.json
 
 | Symptom | Cause | Resolution |
 | :--- | :--- | :--- |
+| `Dataset name: project.dataset.table is invalid, must be letters...` | Pasting a 3-part BigQuery table ID (`project.dataset.table`) into an older version of the script that only parsed 2-part IDs. | Pull the latest version (`git pull`) — `deploy_ai_dashboard.sh` now natively parses 3-part **Copy ID** strings (`project.dataset.table`), extracting the dataset name and source table automatically. |
+| `Warning: Could not verify table 'project.dataset.table' with bq show` | The `bq show` CLI requires colon syntax (`project:dataset.table`) rather than SQL dot syntax (`project.dataset.table`). | Handled automatically in the latest `deploy_ai_dashboard.sh`, which normalizes `SOURCE_TABLE` to `project.dataset.table` for SQL and converts to `project:dataset.table` for `bq show`. |
+| `error: Your local changes to the following files would be overwritten by merge` when running `git pull` | Local files (e.g. `deploy_ai_dashboard.sh`) were modified or had permissions changed (`chmod +x`). | Discard local changes and pull the latest version: `git checkout -- . && git pull && chmod +x deploy_ai_dashboard.sh`. |
 | `Cannot determine dataset described by the given arguments` | Running `bq mk --dataset` without specifying dataset ID or project. | Use `./deploy_ai_dashboard.sh` or pass the full name: `bq mk --dataset --location=US project:dataset`. |
 | `Not found: Dataset ... was not found in location` | The `ai_billing_dashboard` dataset and the billing export dataset are in different regions. | Re-create `ai_billing_dashboard` in the same region as the billing export (`bq --location=<LOC> mk --dataset ...`). |
 | `Access Denied: Table ... Permission bigquery.tables.getData denied` | The user viewing or executing the query lacks permissions on the billing export dataset. | Grant `roles/bigquery.dataViewer` to the user, or set up an [Authorized View](https://cloud.google.com/bigquery/docs/authorized-views). |

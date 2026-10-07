@@ -74,10 +74,10 @@ The script will prompt you for the following inputs:
 | Input / Argument | Description | Default Value |
 | :--- | :--- | :--- |
 | **Google Cloud Project ID** | Target GCP project where the BigQuery views and analytics dataset will reside. | Active `gcloud` project (`gcloud config get-value project`). |
-| **BigQuery Dataset ID** | Target dataset for the views. Accepts bare `dataset` or `project.dataset`. | `ai_billing_dashboard` |
-| **Dataset Location** | Geographic location for the dataset. **Must match** your billing export dataset location (e.g. `US`, `EU`). | `US` |
+| **BigQuery Dataset ID** | Target dataset for the views. Accepts bare `dataset`, `project.dataset`, or a full 3-part `project.dataset.table` ID copied directly from the BigQuery Console (**Copy ID**). | `ai_billing_dashboard` |
+| **Dataset Location** | Geographic location for the dataset (auto-detected if the dataset already exists). **Must match** your billing export dataset location (e.g. `US`, `EU`). | Auto-detected or `US` |
 | **Data Source Mode** | **`1` (Production mode — Default)**: Connects to live Cloud Billing Export.<br>**`2` (Demo mode)**: Generates 60 days of synthetic AI billing data for sandbox testing. | `1` |
-| **Billing Export Table** *(Mode 1 only)* | The source billing export table. The script automatically discovers `gcp_billing_export_*` tables and presents a numbered menu (prioritizing detailed resource exports). | `1` (Top recommended table) |
+| **Billing Export Table** *(Mode 1 only)* | The source billing export table. Automatically uses the table if you pasted a 3-part ID in the Dataset prompt, or scans the dataset for `gcp_billing_export_*` tables and presents a numbered menu (prioritizing detailed resource exports). | `1` (Top recommended table) |
 
 Upon completion, the script outputs your personalized **1-click Looker Studio template clone link**.
 

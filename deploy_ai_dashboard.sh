@@ -27,6 +27,17 @@ echo -e "${BOLD}${CYAN}======================================================${R
 command -v gcloud >/dev/null 2>&1 || { echo -e "${RED}Error: 'gcloud' CLI is not installed or not in PATH.${RESET}" >&2; exit 1; }
 command -v bq >/dev/null 2>&1 || { echo -e "${RED}Error: 'bq' CLI is not installed or not in PATH.${RESET}" >&2; exit 1; }
 
+# Helper: Strip surrounding whitespace, backticks, single quotes, and double quotes
+sanitize_bq_id() {
+  local raw="$1"
+  raw="${raw#"${raw%%[![:space:]]*}"}"
+  raw="${raw%"${raw##*[![:space:]]}"}"
+  raw="${raw//\`/}"
+  raw="${raw//\"/}"
+  raw="${raw//\'/}"
+  printf '%s' "$raw"
+}
+
 # Load existing config if available
 PREV_PROJECT=""
 PREV_DATASET=""
@@ -38,7 +49,7 @@ if [[ -f "$CONFIG_FILE" ]]; then
   # Safely parse KEY=VALUE without arbitrary code execution
   while IFS='=' read -r key val || [[ -n "$key" ]]; do
     key=$(echo "$key" | tr -d '[:space:]')
-    val=$(echo "$val" | tr -d '[:space:]"' | tr -d "'")
+    val=$(sanitize_bq_id "$val")
     case "$key" in
       PROJECT_ID) PREV_PROJECT="$val" ;;
       DATASET_ID) PREV_DATASET="$val" ;;
@@ -46,18 +57,48 @@ if [[ -f "$CONFIG_FILE" ]]; then
       SOURCE_TABLE) PREV_SOURCE_TABLE="$val" ;;
     esac
   done < "$CONFIG_FILE"
+
+  # Heal PREV_DATASET if a previous run stored project.dataset or project.dataset.table
+  if [[ "$PREV_DATASET" =~ ^([a-zA-Z0-9_-]+)[.:]([a-zA-Z0-9_]+)[.:]([a-zA-Z0-9_]+)$ ]]; then
+    [[ -z "$PREV_PROJECT" ]] && PREV_PROJECT="${BASH_REMATCH[1]}"
+    PREV_DATASET="${BASH_REMATCH[2]}"
+    [[ -z "$PREV_SOURCE_TABLE" ]] && PREV_SOURCE_TABLE="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
+  elif [[ "$PREV_DATASET" =~ ^([a-zA-Z0-9_-]+)[.:]([a-zA-Z0-9_]+)$ ]]; then
+    if [[ "${BASH_REMATCH[2]}" =~ ^(gcp_billing_export|sample_ai_billing_export) ]]; then
+      PREV_DATASET="${BASH_REMATCH[1]}"
+      [[ -n "$PREV_PROJECT" && -z "$PREV_SOURCE_TABLE" ]] && PREV_SOURCE_TABLE="${PREV_PROJECT}.${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+    else
+      [[ -z "$PREV_PROJECT" ]] && PREV_PROJECT="${BASH_REMATCH[1]}"
+      PREV_DATASET="${BASH_REMATCH[2]}"
+    fi
+  fi
 fi
 
 CONFIG_APPROVED=false
 
 while [[ "$CONFIG_APPROVED" != "true" ]]; do
+  PREFILLED_SOURCE_TABLE=""
+
   # 2. Determine GCP Project
   CURRENT_GCLOUD_PROJECT=$(gcloud config get-value project 2>/dev/null || true)
   DEFAULT_PROJECT="${PREV_PROJECT:-$CURRENT_GCLOUD_PROJECT}"
 
   while true; do
     read -r -p "$(echo -e "${YELLOW}Enter your Google Cloud Project ID [${DEFAULT_PROJECT}]: ${RESET}")" PROJECT_INPUT
-    PROJECT_ID="${PROJECT_INPUT:-$DEFAULT_PROJECT}"
+    PROJECT_RAW=$(sanitize_bq_id "${PROJECT_INPUT:-$DEFAULT_PROJECT}")
+
+    # If user pasted project.dataset.table or project.dataset at the project prompt, extract project
+    if [[ "$PROJECT_RAW" =~ ^([a-zA-Z0-9_-]+)[.:]([a-zA-Z0-9_]+)[.:]([a-zA-Z0-9_]+)$ ]]; then
+      PROJECT_ID="${BASH_REMATCH[1]}"
+      PREV_DATASET="${BASH_REMATCH[2]}"
+      PREFILLED_SOURCE_TABLE="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
+    elif [[ "$PROJECT_RAW" =~ ^([a-zA-Z0-9_-]+)[.:]([a-zA-Z0-9_]+)$ ]]; then
+      PROJECT_ID="${BASH_REMATCH[1]}"
+      PREV_DATASET="${BASH_REMATCH[2]}"
+    else
+      PROJECT_ID="$PROJECT_RAW"
+    fi
+
     if [[ -n "$PROJECT_ID" && "$PROJECT_ID" != "(unset)" ]]; then
       break
     fi
@@ -67,52 +108,102 @@ while [[ "$CONFIG_APPROVED" != "true" ]]; do
   echo -e "Setting active gcloud project to: ${GREEN}${PROJECT_ID}${RESET}"
   gcloud config set project "$PROJECT_ID" >/dev/null 2>&1 || true
 
-  # 3. BigQuery Dataset Configuration (supports bare dataset or project.dataset)
+  # 3. BigQuery Dataset Configuration (supports bare dataset, project.dataset, or project.dataset.table from 'Copy ID')
   DEFAULT_DATASET="${PREV_DATASET:-ai_billing_dashboard}"
 
   while true; do
     read -r -p "$(echo -e "${YELLOW}Enter BigQuery Dataset ID to create/use [${DEFAULT_DATASET}]: ${RESET}")" DATASET_INPUT
-    DATASET_RAW="${DATASET_INPUT:-$DEFAULT_DATASET}"
+    DATASET_RAW=$(sanitize_bq_id "${DATASET_INPUT:-$DEFAULT_DATASET}")
 
-    # Strip project prefix if user entered project.dataset or project:dataset
-    if [[ "$DATASET_RAW" =~ ^([a-zA-Z0-9_-]+)[.:]([a-zA-Z0-9_]+)$ ]]; then
+    # Case 1: 3-part identifier (project.dataset.table or project:dataset.table) from BigQuery 'Copy ID'
+    if [[ "$DATASET_RAW" =~ ^([a-zA-Z0-9_-]+)[.:]([a-zA-Z0-9_]+)[.:]([a-zA-Z0-9_]+)$ ]]; then
       INFERRED_PROJECT="${BASH_REMATCH[1]}"
       DATASET_ID="${BASH_REMATCH[2]}"
+      INFERRED_TABLE="${BASH_REMATCH[3]}"
+      PREFILLED_SOURCE_TABLE="${INFERRED_PROJECT}.${DATASET_ID}.${INFERRED_TABLE}"
+      echo -e "${CYAN}Detected full table ID. Extracted Dataset ID: '${BOLD}${DATASET_ID}${RESET}${CYAN}' and Source Table: '${BOLD}${PREFILLED_SOURCE_TABLE}${RESET}${CYAN}'${RESET}"
       if [[ "$INFERRED_PROJECT" != "$PROJECT_ID" ]]; then
-        echo -e "${CYAN}Note: Project prefix '${INFERRED_PROJECT}' detected in dataset input.${RESET}"
+        echo -e "${CYAN}Note: Project prefix '${INFERRED_PROJECT}' detected in input.${RESET}"
         read -r -p "$(echo -e "${YELLOW}Use '${INFERRED_PROJECT}' as target Project ID instead of '${PROJECT_ID}'? [y/N]: ${RESET}")" SWITCH_PROJ
         if [[ "$SWITCH_PROJ" =~ ^[Yy]$ ]]; then
           PROJECT_ID="$INFERRED_PROJECT"
           gcloud config set project "$PROJECT_ID" >/dev/null 2>&1 || true
         fi
       fi
+    # Case 2: 2-part identifier (either dataset.table or project.dataset / project:dataset)
+    elif [[ "$DATASET_RAW" =~ ^([a-zA-Z0-9_-]+)[.:]([a-zA-Z0-9_]+)$ ]]; then
+      PART1="${BASH_REMATCH[1]}"
+      PART2="${BASH_REMATCH[2]}"
+      if [[ "$PART2" =~ ^(gcp_billing_export|sample_ai_billing_export) ]]; then
+        DATASET_ID="$PART1"
+        INFERRED_TABLE="$PART2"
+        PREFILLED_SOURCE_TABLE="${PROJECT_ID}.${DATASET_ID}.${INFERRED_TABLE}"
+        echo -e "${CYAN}Detected dataset.table input. Extracted Dataset ID: '${BOLD}${DATASET_ID}${RESET}${CYAN}' and Source Table: '${BOLD}${PREFILLED_SOURCE_TABLE}${RESET}${CYAN}'${RESET}"
+      else
+        INFERRED_PROJECT="$PART1"
+        DATASET_ID="$PART2"
+        if [[ "$INFERRED_PROJECT" != "$PROJECT_ID" ]]; then
+          echo -e "${CYAN}Note: Project prefix '${INFERRED_PROJECT}' detected in dataset input.${RESET}"
+          read -r -p "$(echo -e "${YELLOW}Use '${INFERRED_PROJECT}' as target Project ID instead of '${PROJECT_ID}'? [y/N]: ${RESET}")" SWITCH_PROJ
+          if [[ "$SWITCH_PROJ" =~ ^[Yy]$ ]]; then
+            PROJECT_ID="$INFERRED_PROJECT"
+            gcloud config set project "$PROJECT_ID" >/dev/null 2>&1 || true
+          fi
+        fi
+      fi
+    # Case 3: Bare dataset ID
     else
       DATASET_ID="$DATASET_RAW"
     fi
 
-    if [[ -n "$DATASET_ID" ]]; then
-      break
+    if [[ -z "$DATASET_ID" ]]; then
+      echo -e "${RED}Dataset ID cannot be empty. Please enter a valid Dataset ID.${RESET}"
+      continue
     fi
-    echo -e "${RED}Dataset ID cannot be empty. Please enter a valid Dataset ID.${RESET}"
+
+    if [[ ! "$DATASET_ID" =~ ^[a-zA-Z0-9_]{1,1024}$ ]]; then
+      echo -e "${RED}Invalid Dataset ID '${DATASET_ID}'. BigQuery dataset names must contain only letters, numbers, and underscores (or paste project.dataset / project.dataset.table).${RESET}"
+      continue
+    fi
+
+    break
   done
 
-  DEFAULT_LOCATION="${PREV_LOCATION:-US}"
+  # Auto-detect dataset location if the target or source dataset already exists
+  DETECTED_LOCATION=""
+  DS_SHOW_JSON=$(bq show --format=json "${PROJECT_ID}:${DATASET_ID}" 2>/dev/null || true)
+  if [[ "$DS_SHOW_JSON" =~ \"location\":[[:space:]]*\"([^\"]+)\" ]]; then
+    DETECTED_LOCATION="${BASH_REMATCH[1]}"
+  elif [[ -n "$PREFILLED_SOURCE_TABLE" && "$PREFILLED_SOURCE_TABLE" =~ ^([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\. ]]; then
+    SRC_DS_JSON=$(bq show --format=json "${BASH_REMATCH[1]}:${BASH_REMATCH[2]}" 2>/dev/null || true)
+    if [[ "$SRC_DS_JSON" =~ \"location\":[[:space:]]*\"([^\"]+)\" ]]; then
+      DETECTED_LOCATION="${BASH_REMATCH[1]}"
+    fi
+  fi
+
+  if [[ -n "$DETECTED_LOCATION" ]]; then
+    DEFAULT_LOCATION="$DETECTED_LOCATION"
+    echo -e "${CYAN}Auto-detected BigQuery dataset location: ${BOLD}${DEFAULT_LOCATION}${RESET}"
+  else
+    DEFAULT_LOCATION="${PREV_LOCATION:-US}"
+  fi
+
   read -r -p "$(echo -e "${YELLOW}Enter BigQuery Dataset Location [${DEFAULT_LOCATION}]: ${RESET}")" LOCATION_INPUT
-  LOCATION="${LOCATION_INPUT:-$DEFAULT_LOCATION}"
+  LOCATION=$(sanitize_bq_id "${LOCATION_INPUT:-$DEFAULT_LOCATION}")
 
   # 4. Data Source Mode Selection (Production mode is default)
   echo -e "\n${BOLD}Select your data source mode:${RESET}"
   echo -e "  1) ${BOLD}Production mode${RESET} — Connect to existing Google Cloud Billing Export table (Recommended)"
   echo -e "  2) ${BOLD}Demo mode${RESET} — Generate synthetic sample AI billing data for sandbox testing"
   read -r -p "$(echo -e "${YELLOW}Select option [1 or 2, default: 1]: ${RESET}")" DATA_MODE_INPUT
-  DATA_MODE="${DATA_MODE_INPUT:-1}"
+  DATA_MODE=$(sanitize_bq_id "${DATA_MODE_INPUT:-1}")
 
   SOURCE_TABLE=""
 
   # Check if view already exists and what table it currently points to (Re-run regression protection)
   EXISTING_SOURCE_IN_VIEW=""
-  if bq show --view "${PROJECT_ID}:${DATASET_ID}.vw_ai_consumption_master" >/dev/null 2>&1; then
-    VIEW_JSON=$(bq show --view --format=prettyjson "${PROJECT_ID}:${DATASET_ID}.vw_ai_consumption_master" 2>/dev/null || true)
+  if bq show "${PROJECT_ID}:${DATASET_ID}.vw_ai_consumption_master" >/dev/null 2>&1; then
+    VIEW_JSON=$(bq show --format=prettyjson "${PROJECT_ID}:${DATASET_ID}.vw_ai_consumption_master" 2>/dev/null || true)
     EXISTING_SOURCE_IN_VIEW=$(echo "$VIEW_JSON" | grep -o 'FROM[[:space:]]*`[^`]*`' | head -n1 | sed -E 's/FROM[[:space:]]*`([^`]+)`/\1/' || true)
   fi
 
@@ -123,13 +214,18 @@ while [[ "$CONFIG_APPROVED" != "true" ]]; do
     SCAN_PROJECT="$PROJECT_ID"
     SCAN_DATASET="$DATASET_ID"
 
-    # If the user previously used a source table, offer to keep it
-    if [[ -n "$EXISTING_SOURCE_IN_VIEW" && "$EXISTING_SOURCE_IN_VIEW" != *"sample_ai_billing_export"* ]]; then
+    # Priority 1: Table ID already pasted in the Dataset prompt during this session
+    if [[ -n "$PREFILLED_SOURCE_TABLE" && "$PREFILLED_SOURCE_TABLE" != *"sample_ai_billing_export"* ]]; then
+      echo -e "${GREEN}Using billing export table from input:${RESET} ${BOLD}${PREFILLED_SOURCE_TABLE}${RESET}"
+      SOURCE_TABLE="$PREFILLED_SOURCE_TABLE"
+    # Priority 2: Existing view's source table
+    elif [[ -n "$EXISTING_SOURCE_IN_VIEW" && "$EXISTING_SOURCE_IN_VIEW" != *"sample_ai_billing_export"* ]]; then
       echo -e "${GREEN}Found existing source table in view:${RESET} ${BOLD}${EXISTING_SOURCE_IN_VIEW}${RESET}"
       read -r -p "$(echo -e "${YELLOW}Keep using this existing billing export table? [Y/n]: ${RESET}")" KEEP_EXISTING
       if [[ ! "$KEEP_EXISTING" =~ ^[Nn]$ ]]; then
         SOURCE_TABLE="$EXISTING_SOURCE_IN_VIEW"
       fi
+    # Priority 3: Previously saved source table in .dashboard_config
     elif [[ -n "$PREV_SOURCE_TABLE" && "$PREV_SOURCE_TABLE" != *"sample_ai_billing_export"* ]]; then
       echo -e "${GREEN}Found previously configured source table:${RESET} ${BOLD}${PREV_SOURCE_TABLE}${RESET}"
       read -r -p "$(echo -e "${YELLOW}Keep using this previous billing export table? [Y/n]: ${RESET}")" KEEP_PREV
@@ -140,26 +236,50 @@ while [[ "$CONFIG_APPROVED" != "true" ]]; do
 
     if [[ -z "$SOURCE_TABLE" ]]; then
       while true; do
-        read -r -p "$(echo -e "${YELLOW}Enter dataset containing billing export tables [${SCAN_DATASET}]: ${RESET}")" SCAN_DS_INPUT
-        CHOSEN_SCAN_DS="${SCAN_DS_INPUT:-$SCAN_DATASET}"
+        read -r -p "$(echo -e "${YELLOW}Enter dataset containing billing export tables (or full project.dataset.table) [${SCAN_DATASET}]: ${RESET}")" SCAN_DS_INPUT
+        CHOSEN_SCAN_DS=$(sanitize_bq_id "${SCAN_DS_INPUT:-$SCAN_DATASET}")
 
-        if [[ "$CHOSEN_SCAN_DS" =~ ^([a-zA-Z0-9_-]+)[.:]([a-zA-Z0-9_]+)$ ]]; then
+        # Support 3-part project.dataset.table pasted directly into the dataset scan prompt
+        if [[ "$CHOSEN_SCAN_DS" =~ ^([a-zA-Z0-9_-]+)[.:]([a-zA-Z0-9_]+)[.:]([a-zA-Z0-9_]+)$ ]]; then
           SCAN_PROJECT="${BASH_REMATCH[1]}"
           SCAN_DATASET="${BASH_REMATCH[2]}"
+          SOURCE_TABLE="${SCAN_PROJECT}.${SCAN_DATASET}.${BASH_REMATCH[3]}"
+          echo -e "${GREEN}Detected full billing export table path:${RESET} ${BOLD}${SOURCE_TABLE}${RESET}"
+          break
+        # Support 2-part dataset.table or project.dataset
+        elif [[ "$CHOSEN_SCAN_DS" =~ ^([a-zA-Z0-9_-]+)[.:]([a-zA-Z0-9_]+)$ ]]; then
+          if [[ "${BASH_REMATCH[2]}" =~ ^gcp_billing_export ]]; then
+            SCAN_DATASET="${BASH_REMATCH[1]}"
+            SOURCE_TABLE="${SCAN_PROJECT}.${SCAN_DATASET}.${BASH_REMATCH[2]}"
+            echo -e "${GREEN}Detected billing export table path:${RESET} ${BOLD}${SOURCE_TABLE}${RESET}"
+            break
+          else
+            SCAN_PROJECT="${BASH_REMATCH[1]}"
+            SCAN_DATASET="${BASH_REMATCH[2]}"
+          fi
+        # Support 1-part table name if user pasted gcp_billing_export_* directly
+        elif [[ "$CHOSEN_SCAN_DS" =~ ^gcp_billing_export[a-zA-Z0-9_]*$ ]]; then
+          SOURCE_TABLE="${SCAN_PROJECT}.${SCAN_DATASET}.${CHOSEN_SCAN_DS}"
+          echo -e "${GREEN}Detected billing export table:${RESET} ${BOLD}${SOURCE_TABLE}${RESET}"
+          break
         else
           SCAN_DATASET="$CHOSEN_SCAN_DS"
         fi
 
-        # Find tables matching gcp_billing_export
+        # Find tables matching gcp_billing_export (guard jq against non-JSON stdout error messages from bq ls)
         DETECTED_TABLES=()
         if command -v jq >/dev/null 2>&1; then
-          while IFS= read -r t; do
-            [[ -n "$t" ]] && DETECTED_TABLES+=("$t")
-          done < <(bq ls --max_results=100 --format=json "${SCAN_PROJECT}:${SCAN_DATASET}" 2>/dev/null | jq -r '.[].tableReference.tableId // empty' | grep -E '^gcp_billing_export' || true)
+          BQ_LS_JSON=$(bq ls --max_results=100 --format=json "${SCAN_PROJECT}:${SCAN_DATASET}" 2>/dev/null || true)
+          if [[ "$BQ_LS_JSON" =~ ^[[:space:]]*\[ ]]; then
+            while IFS= read -r t; do
+              [[ -n "$t" ]] && DETECTED_TABLES+=("$t")
+            done < <(printf '%s\n' "$BQ_LS_JSON" | jq -r 'if type == "array" then .[].tableReference.tableId // empty else empty end' 2>/dev/null | grep -E '^gcp_billing_export' || true)
+          fi
         else
+          BQ_LS_TEXT=$(bq ls --max_results=100 "${SCAN_PROJECT}:${SCAN_DATASET}" 2>/dev/null || true)
           while IFS= read -r t; do
             [[ -n "$t" ]] && DETECTED_TABLES+=("$t")
-          done < <(bq ls --max_results=100 "${SCAN_PROJECT}:${SCAN_DATASET}" 2>/dev/null | awk '{print $1}' | grep -E '^gcp_billing_export' || true)
+          done < <(printf '%s\n' "$BQ_LS_TEXT" | awk '{print $1}' | grep -E '^gcp_billing_export' || true)
         fi
 
         # Prioritize resource export over standard export
@@ -184,7 +304,7 @@ while [[ "$CONFIG_APPROVED" != "true" ]]; do
           echo "  c) Enter a custom table path"
 
           read -r -p "$(echo -e "${YELLOW}Select export table [1-${#SORTED_TABLES[@]}, default: 1]: ${RESET}")" TABLE_CHOICE
-          TABLE_CHOICE="${TABLE_CHOICE:-1}"
+          TABLE_CHOICE=$(sanitize_bq_id "${TABLE_CHOICE:-1}")
 
           if [[ "$TABLE_CHOICE" =~ ^[0-9]+$ ]] && (( TABLE_CHOICE >= 1 && TABLE_CHOICE <= ${#SORTED_TABLES[@]} )); then
             selected_raw="${SORTED_TABLES[$((TABLE_CHOICE - 1))]}"
@@ -193,7 +313,10 @@ while [[ "$CONFIG_APPROVED" != "true" ]]; do
             break
           elif [[ "$TABLE_CHOICE" =~ ^[Cc]$ ]]; then
             read -r -p "$(echo -e "${YELLOW}Enter full table path (project.dataset.table): ${RESET}")" CUSTOM_TABLE
-            SOURCE_TABLE="$CUSTOM_TABLE"
+            SOURCE_TABLE=$(sanitize_bq_id "$CUSTOM_TABLE")
+            break
+          elif [[ "$TABLE_CHOICE" =~ ^([a-zA-Z0-9_-]+)[.:]([a-zA-Z0-9_]+)[.:]([a-zA-Z0-9_]+)$ ]]; then
+            SOURCE_TABLE="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
             break
           else
             echo -e "${RED}Invalid selection. Please try again.${RESET}"
@@ -203,27 +326,54 @@ while [[ "$CONFIG_APPROVED" != "true" ]]; do
           echo "  1) Try another dataset"
           echo "  2) Enter full table path manually"
           read -r -p "$(echo -e "${YELLOW}Select option [1 or 2, default: 2]: ${RESET}")" NO_TBL_CHOICE
-          NO_TBL_CHOICE="${NO_TBL_CHOICE:-2}"
+          NO_TBL_CHOICE=$(sanitize_bq_id "${NO_TBL_CHOICE:-2}")
 
           if [[ "$NO_TBL_CHOICE" == "2" ]]; then
             read -r -p "$(echo -e "${YELLOW}Enter full path to Billing Export table (e.g. project.dataset.gcp_billing_export_v1_XXXX): ${RESET}")" MANUAL_TABLE
-            SOURCE_TABLE="$MANUAL_TABLE"
+            SOURCE_TABLE=$(sanitize_bq_id "$MANUAL_TABLE")
+            break
+          elif [[ "$NO_TBL_CHOICE" =~ ^([a-zA-Z0-9_-]+)[.:]([a-zA-Z0-9_]+)[.:]([a-zA-Z0-9_]+)$ ]]; then
+            SOURCE_TABLE="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
             break
           fi
         fi
       done
     fi
 
-    # Validate source table existence with bq show
+    # Normalize SOURCE_TABLE to SQL dot format (project.dataset.table) and bq CLI format (project:dataset.table)
+    SOURCE_TABLE=$(sanitize_bq_id "$SOURCE_TABLE")
+    if [[ "$SOURCE_TABLE" =~ ^([a-zA-Z0-9_-]+)[.:]([a-zA-Z0-9_]+)[.:]([a-zA-Z0-9_]+)$ ]]; then
+      SOURCE_TABLE="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
+      BQ_SOURCE_REF="${BASH_REMATCH[1]}:${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
+    elif [[ "$SOURCE_TABLE" =~ ^([a-zA-Z0-9_]+)[.]([a-zA-Z0-9_]+)$ ]]; then
+      SOURCE_TABLE="${SCAN_PROJECT}.${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+      BQ_SOURCE_REF="${SCAN_PROJECT}:${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+    elif [[ "$SOURCE_TABLE" =~ ^([a-zA-Z0-9_]+)$ ]]; then
+      SOURCE_TABLE="${SCAN_PROJECT}.${SCAN_DATASET}.${BASH_REMATCH[1]}"
+      BQ_SOURCE_REF="${SCAN_PROJECT}:${SCAN_DATASET}.${BASH_REMATCH[1]}"
+    else
+      BQ_SOURCE_REF="${SOURCE_TABLE/./:}"
+    fi
+
+    # Validate source table existence with bq show (using colon syntax project:dataset.table)
     echo -e "Verifying access to ${CYAN}${SOURCE_TABLE}${RESET}..."
-    if ! bq show "${SOURCE_TABLE}" >/dev/null 2>&1; then
+    TBL_SHOW_JSON=$(bq show --format=json "${BQ_SOURCE_REF}" 2>/dev/null || true)
+    if [[ -z "$TBL_SHOW_JSON" || ! "$TBL_SHOW_JSON" =~ \"tableReference\" ]]; then
       echo -e "${YELLOW}Warning: Could not verify table '${SOURCE_TABLE}' with bq show.${RESET}"
       read -r -p "$(echo -e "${YELLOW}Continue with this table path anyway? [y/N]: ${RESET}")" CONFIRM_UNVERIFIED
       if [[ ! "$CONFIRM_UNVERIFIED" =~ ^[Yy]$ ]]; then
+        PREFILLED_SOURCE_TABLE=""
         continue
       fi
     else
       echo -e "${GREEN}Table verified successfully.${RESET}"
+      if [[ "$TBL_SHOW_JSON" =~ \"location\":[[:space:]]*\"([^\"]+)\" ]]; then
+        SRC_TBL_LOCATION="${BASH_REMATCH[1]}"
+        if [[ -n "$SRC_TBL_LOCATION" && "${SRC_TBL_LOCATION^^}" != "${LOCATION^^}" ]]; then
+          echo -e "${YELLOW}Note: Source table is in location '${SRC_TBL_LOCATION}'. Updating target dataset location to '${SRC_TBL_LOCATION}' to match.${RESET}"
+          LOCATION="$SRC_TBL_LOCATION"
+        fi
+      fi
     fi
 
   else
@@ -272,7 +422,7 @@ EOF
 
 # Ensure Target Dataset exists
 echo -e "\n${CYAN}Step 1: Ensuring BigQuery dataset '${DATASET_ID}' exists in location '${LOCATION}'...${RESET}"
-if bq show --location="${LOCATION}" "${PROJECT_ID}:${DATASET_ID}" >/dev/null 2>&1; then
+if bq show "${PROJECT_ID}:${DATASET_ID}" >/dev/null 2>&1; then
   echo -e "${GREEN}Dataset ${DATASET_ID} already exists.${RESET}"
 else
   echo -e "Creating dataset ${DATASET_ID} in location ${LOCATION}..."
@@ -586,4 +736,3 @@ else
   echo -e "  2. Sharing: The URL above is for initial creation/editing."
   echo -e "     To distribute to stakeholders, click the 'Share' button inside Looker Studio.\n"
 fi
-
