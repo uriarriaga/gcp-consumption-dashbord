@@ -38,6 +38,25 @@ sanitize_bq_id() {
   printf '%s' "$raw"
 }
 
+# Helper: Auto-detect BigQuery location for a dataset (project:dataset) or table (project:dataset.table)
+get_bq_location() {
+  local ref="$1"
+  local info_json=""
+  local trimmed=""
+  local loc=""
+  info_json=$(bq show --format=json "$ref" 2>/dev/null || true)
+  trimmed="${info_json#"${info_json%%[![:space:]]*}"}"
+  if [[ "$trimmed" == "{"* ]]; then
+    if command -v jq >/dev/null 2>&1; then
+      loc=$(printf '%s\n' "$trimmed" | jq -r '.location // empty' 2>/dev/null || true)
+    fi
+    if [[ -z "$loc" ]]; then
+      loc=$(printf '%s\n' "$trimmed" | sed -n 's/.*"location"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)
+    fi
+  fi
+  printf '%s' "$loc"
+}
+
 # Load existing config if available
 PREV_PROJECT=""
 PREV_DATASET=""
@@ -169,16 +188,14 @@ while [[ "$CONFIG_APPROVED" != "true" ]]; do
     break
   done
 
-  # Auto-detect dataset location if the target or source dataset already exists
+  # Auto-detect dataset location if the source or target dataset already exists
   DETECTED_LOCATION=""
-  DS_SHOW_JSON=$(bq show --format=json "${PROJECT_ID}:${DATASET_ID}" 2>/dev/null || true)
-  if [[ "$DS_SHOW_JSON" =~ \"location\":[[:space:]]*\"([^\"]+)\" ]]; then
-    DETECTED_LOCATION="${BASH_REMATCH[1]}"
-  elif [[ -n "$PREFILLED_SOURCE_TABLE" && "$PREFILLED_SOURCE_TABLE" =~ ^([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\. ]]; then
-    SRC_DS_JSON=$(bq show --format=json "${BASH_REMATCH[1]}:${BASH_REMATCH[2]}" 2>/dev/null || true)
-    if [[ "$SRC_DS_JSON" =~ \"location\":[[:space:]]*\"([^\"]+)\" ]]; then
-      DETECTED_LOCATION="${BASH_REMATCH[1]}"
-    fi
+  if [[ -n "$PREFILLED_SOURCE_TABLE" && "$PREFILLED_SOURCE_TABLE" =~ ^([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)$ ]]; then
+    DETECTED_LOCATION=$(get_bq_location "${BASH_REMATCH[1]}:${BASH_REMATCH[2]}.${BASH_REMATCH[3]}")
+    [[ -z "$DETECTED_LOCATION" ]] && DETECTED_LOCATION=$(get_bq_location "${BASH_REMATCH[1]}:${BASH_REMATCH[2]}")
+  fi
+  if [[ -z "$DETECTED_LOCATION" ]]; then
+    DETECTED_LOCATION=$(get_bq_location "${PROJECT_ID}:${DATASET_ID}")
   fi
 
   if [[ -n "$DETECTED_LOCATION" ]]; then
@@ -270,10 +287,11 @@ while [[ "$CONFIG_APPROVED" != "true" ]]; do
         DETECTED_TABLES=()
         if command -v jq >/dev/null 2>&1; then
           BQ_LS_JSON=$(bq ls --max_results=100 --format=json "${SCAN_PROJECT}:${SCAN_DATASET}" 2>/dev/null || true)
-          if [[ "$BQ_LS_JSON" =~ ^[[:space:]]*\[ ]]; then
+          BQ_LS_TRIMMED="${BQ_LS_JSON#"${BQ_LS_JSON%%[![:space:]]*}"}"
+          if [[ "$BQ_LS_TRIMMED" == "["* ]]; then
             while IFS= read -r t; do
               [[ -n "$t" ]] && DETECTED_TABLES+=("$t")
-            done < <(printf '%s\n' "$BQ_LS_JSON" | jq -r 'if type == "array" then .[].tableReference.tableId // empty else empty end' 2>/dev/null | grep -E '^gcp_billing_export' || true)
+            done < <(printf '%s\n' "$BQ_LS_TRIMMED" | jq -r 'if type == "array" then .[].tableReference.tableId // empty else empty end' 2>/dev/null | grep -E '^gcp_billing_export' || true)
           fi
         else
           BQ_LS_TEXT=$(bq ls --max_results=100 "${SCAN_PROJECT}:${SCAN_DATASET}" 2>/dev/null || true)
@@ -342,10 +360,15 @@ while [[ "$CONFIG_APPROVED" != "true" ]]; do
 
     # Normalize SOURCE_TABLE to SQL dot format (project.dataset.table) and bq CLI format (project:dataset.table)
     SOURCE_TABLE=$(sanitize_bq_id "$SOURCE_TABLE")
+    SRC_PROJECT_REF="$SCAN_PROJECT"
+    SRC_DATASET_REF="$SCAN_DATASET"
     if [[ "$SOURCE_TABLE" =~ ^([a-zA-Z0-9_-]+)[.:]([a-zA-Z0-9_]+)[.:]([a-zA-Z0-9_]+)$ ]]; then
+      SRC_PROJECT_REF="${BASH_REMATCH[1]}"
+      SRC_DATASET_REF="${BASH_REMATCH[2]}"
       SOURCE_TABLE="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
       BQ_SOURCE_REF="${BASH_REMATCH[1]}:${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
     elif [[ "$SOURCE_TABLE" =~ ^([a-zA-Z0-9_]+)[.]([a-zA-Z0-9_]+)$ ]]; then
+      SRC_DATASET_REF="${BASH_REMATCH[1]}"
       SOURCE_TABLE="${SCAN_PROJECT}.${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
       BQ_SOURCE_REF="${SCAN_PROJECT}:${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
     elif [[ "$SOURCE_TABLE" =~ ^([a-zA-Z0-9_]+)$ ]]; then
@@ -358,7 +381,7 @@ while [[ "$CONFIG_APPROVED" != "true" ]]; do
     # Validate source table existence with bq show (using colon syntax project:dataset.table)
     echo -e "Verifying access to ${CYAN}${SOURCE_TABLE}${RESET}..."
     TBL_SHOW_JSON=$(bq show --format=json "${BQ_SOURCE_REF}" 2>/dev/null || true)
-    if [[ -z "$TBL_SHOW_JSON" || ! "$TBL_SHOW_JSON" =~ \"tableReference\" ]]; then
+    if [[ "$TBL_SHOW_JSON" != *'"tableReference"'* ]]; then
       echo -e "${YELLOW}Warning: Could not verify table '${SOURCE_TABLE}' with bq show.${RESET}"
       read -r -p "$(echo -e "${YELLOW}Continue with this table path anyway? [y/N]: ${RESET}")" CONFIRM_UNVERIFIED
       if [[ ! "$CONFIRM_UNVERIFIED" =~ ^[Yy]$ ]]; then
@@ -367,13 +390,17 @@ while [[ "$CONFIG_APPROVED" != "true" ]]; do
       fi
     else
       echo -e "${GREEN}Table verified successfully.${RESET}"
-      if [[ "$TBL_SHOW_JSON" =~ \"location\":[[:space:]]*\"([^\"]+)\" ]]; then
-        SRC_TBL_LOCATION="${BASH_REMATCH[1]}"
-        if [[ -n "$SRC_TBL_LOCATION" && "${SRC_TBL_LOCATION^^}" != "${LOCATION^^}" ]]; then
-          echo -e "${YELLOW}Note: Source table is in location '${SRC_TBL_LOCATION}'. Updating target dataset location to '${SRC_TBL_LOCATION}' to match.${RESET}"
-          LOCATION="$SRC_TBL_LOCATION"
-        fi
-      fi
+    fi
+
+    # Auto-align LOCATION with the source billing export table / dataset location (e.g. us-central1 vs US)
+    SRC_TBL_LOCATION=$(get_bq_location "${BQ_SOURCE_REF}")
+    if [[ -z "$SRC_TBL_LOCATION" && -n "$SRC_PROJECT_REF" && -n "$SRC_DATASET_REF" ]]; then
+      SRC_TBL_LOCATION=$(get_bq_location "${SRC_PROJECT_REF}:${SRC_DATASET_REF}")
+    fi
+    if [[ -n "$SRC_TBL_LOCATION" && "${SRC_TBL_LOCATION^^}" != "${LOCATION^^}" ]]; then
+      echo -e "${YELLOW}Note: Source billing export is in location '${SRC_TBL_LOCATION}' (current setting: '${LOCATION}').${RESET}"
+      echo -e "${CYAN}Automatically updating target dataset location to '${BOLD}${SRC_TBL_LOCATION}${RESET}${CYAN}' so BigQuery views can query the export table.${RESET}"
+      LOCATION="$SRC_TBL_LOCATION"
     fi
 
   else
@@ -420,10 +447,33 @@ VIEW_NAME=vw_ai_consumption_master
 SOURCE_TABLE=${SOURCE_TABLE}
 EOF
 
-# Ensure Target Dataset exists
+# Ensure Target Dataset exists in the exact same location as the source table
 echo -e "\n${CYAN}Step 1: Ensuring BigQuery dataset '${DATASET_ID}' exists in location '${LOCATION}'...${RESET}"
 if bq show "${PROJECT_ID}:${DATASET_ID}" >/dev/null 2>&1; then
-  echo -e "${GREEN}Dataset ${DATASET_ID} already exists.${RESET}"
+  EXISTING_DS_LOC=$(get_bq_location "${PROJECT_ID}:${DATASET_ID}")
+  if [[ -n "$EXISTING_DS_LOC" && "${EXISTING_DS_LOC^^}" != "${LOCATION^^}" ]]; then
+    echo -e "${YELLOW}Warning: Dataset '${PROJECT_ID}:${DATASET_ID}' currently exists in location '${EXISTING_DS_LOC}', but source data is in '${LOCATION}'.${RESET}"
+    DS_TABLES_JSON=$(bq ls --max_results=50 --format=json "${PROJECT_ID}:${DATASET_ID}" 2>/dev/null || true)
+    DS_TABLES_TRIMMED="${DS_TABLES_JSON#"${DS_TABLES_JSON%%[![:space:]]*}"}"
+    NON_DASHBOARD_TABLES=""
+    if command -v jq >/dev/null 2>&1 && [[ "$DS_TABLES_TRIMMED" == "["* ]]; then
+      NON_DASHBOARD_TABLES=$(printf '%s\n' "$DS_TABLES_TRIMMED" | jq -r '.[]?.tableReference.tableId // empty' 2>/dev/null | grep -Ev '^(vw_ai_consumption_master|vw_ai_cost_anomaly_alerts|sample_ai_billing_export)$' || true)
+    fi
+    if [[ -z "$NON_DASHBOARD_TABLES" ]]; then
+      echo -e "${CYAN}Recreating dataset '${PROJECT_ID}:${DATASET_ID}' in location '${LOCATION}'...${RESET}"
+      bq rm -r -f -d "${PROJECT_ID}:${DATASET_ID}" >/dev/null 2>&1 || true
+      bq --location="${LOCATION}" mk --dataset \
+        --description="AI Billing and Consumption Analytics Dataset" \
+        "${PROJECT_ID}:${DATASET_ID}"
+      echo -e "${GREEN}Dataset '${DATASET_ID}' recreated in location '${LOCATION}' successfully.${RESET}"
+    else
+      echo -e "${RED}Error: Dataset '${PROJECT_ID}:${DATASET_ID}' in '${EXISTING_DS_LOC}' contains other tables and cannot be automatically moved to '${LOCATION}'.${RESET}"
+      echo -e "${YELLOW}Please re-run and choose a different Dataset ID (such as '${SRC_DATASET_REF:-ai_billing_dashboard_regional}') in location '${LOCATION}'.${RESET}"
+      exit 1
+    fi
+  else
+    echo -e "${GREEN}Dataset ${DATASET_ID} already exists (Location: ${EXISTING_DS_LOC:-$LOCATION}).${RESET}"
+  fi
 else
   echo -e "Creating dataset ${DATASET_ID} in location ${LOCATION}..."
   bq --location="${LOCATION}" mk --dataset \
